@@ -1,0 +1,31 @@
+"""Конфигурация из окружения. Без секретов в коде."""
+import os
+
+# --- AI (OpenRouter, как в Planify) ---
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3.5-sonnet")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+# --- Supabase ---
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")  # service_role (серверный доступ)
+
+# --- Telegram ---
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+# --- Прочее ---
+REPORT_STYLE = os.getenv("REPORT_STYLE", "мягкий, на «ты», практичный")
+DIAG_TOKEN = os.getenv("DIAG_TOKEN", "")  # для /_diag без логов Railway
+METHOD_VERSION = "v0.1"
+
+
+def ai_ready() -> bool:
+    return bool(OPENROUTER_API_KEY)
+
+
+def db_ready() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_KEY)
+
+
+def bot_ready() -> bool:
+    return bool(TELEGRAM_BOT_TOKEN)
