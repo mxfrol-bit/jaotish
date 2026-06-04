@@ -15,6 +15,24 @@ if config.db_ready():
     supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
 
 
+def get_user(telegram_id: int) -> Optional[dict[str, Any]]:
+    """Сохранённые данные пользователя (имя, дата) — чтобы не вводить заново."""
+    if supabase is None:
+        return None
+    res = supabase.table("me_users").select("*").eq("telegram_id", telegram_id).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def upsert_user(telegram_id: int, fields: dict[str, Any]) -> None:
+    """Создать/обновить данные пользователя."""
+    if supabase is None:
+        return
+    from datetime import datetime, timezone
+
+    row = {"telegram_id": telegram_id, "updated_at": datetime.now(timezone.utc).isoformat(), **fields}
+    supabase.table("me_users").upsert(row, on_conflict="telegram_id").execute()
+
+
 def save_profile(profile: dict[str, Any], telegram_id: Optional[int] = None) -> Optional[str]:
     """Сохранить профиль, вернуть profile_id (или None, если БД не настроена)."""
     if supabase is None:
