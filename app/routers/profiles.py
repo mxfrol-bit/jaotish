@@ -8,7 +8,7 @@ from .. import config, database
 from ..engine import build_profile
 from ..models import ProfileRequest
 
-PROFILES_VER = "profiles-0.2.0"
+PROFILES_VER = "profiles-0.2.1"
 
 router = APIRouter(prefix="/api/profiles", tags=["profiles"])
 
