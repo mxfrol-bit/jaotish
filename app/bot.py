@@ -401,7 +401,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         sections = parse_sections((profile.get("report") or {}).get("full_report") or "")
         i = int(idx)
         if 0 <= i < len(sections):
-            await _send_long(q.message, sections[i][1])
+            atype_val = (profile.get("user_input") or {}).get("analysis_type") or "personality"
+            kb = _sections_keyboard(pid, sections, atype_val)
+            await _send_long(q.message, sections[i][1], reply_markup=kb)
     elif data.startswith("r:"):
         atype_val = data.split(":", 1)[1]
         label = _LABEL_BY_TYPE.get(atype_val)
@@ -796,12 +798,16 @@ async def _save_place(telegram_id: int, raw: str) -> tuple[bool, str]:
     )
 
 
-async def _send_long(msg, text: str) -> None:
-    """Telegram лимит ~4096 символов — режем по абзацам."""
+async def _send_long(msg, text: str, reply_markup=None) -> None:
+    """Telegram лимит ~4096 символов — режем по абзацам.
+
+    reply_markup вешаем на ПОСЛЕДНЕЕ сообщение — так меню разделов всегда оказывается
+    внизу под открытым текстом, и не нужно скроллить вверх к старым кнопкам.
+    """
     limit = 3800
     while text:
         if len(text) <= limit:
-            await msg.reply_text(text)
+            await msg.reply_text(text, reply_markup=reply_markup)
             break
         cut = text.rfind("\n", 0, limit)
         cut = cut if cut > 0 else limit
