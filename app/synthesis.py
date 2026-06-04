@@ -102,18 +102,42 @@ def synthesize(user_input: dict[str, Any], modules: dict[str, Any]) -> dict[str,
         },
     ]
 
-    resp = requests.post(
-        f"{config.OPENROUTER_BASE_URL}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "X-Title": "Matrix Engine",
-        },
-        json={"model": config.OPENROUTER_MODEL, "messages": messages, "temperature": 0.7},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    full = resp.json()["choices"][0]["message"]["content"]
+    try:
+        resp = requests.post(
+            f"{config.OPENROUTER_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "X-Title": "Matrix Engine",
+            },
+            json={"model": config.OPENROUTER_MODEL, "messages": messages, "temperature": 0.7},
+            timeout=90,
+        )
+    except requests.RequestException as e:
+        return _error_report(filtered, f"сеть/таймаут OpenRouter: {e}")
+
+    if resp.status_code != 200:
+        return _error_report(filtered, f"OpenRouter {resp.status_code}: {resp.text[:400]}")
+
+    try:
+        full = resp.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, ValueError) as e:
+        return _error_report(filtered, f"неожиданный ответ OpenRouter: {e}; body={resp.text[:300]}")
 
     short = full.split("\n\n")[0][:600]
     return {"short_summary": short, "full_report": full, "action_plan": ""}
+
+
+def _error_report(filtered: dict[str, Any], reason: str) -> dict[str, str]:
+    """AI не сработал — отдаём посчитанное + честную причину, без зависания."""
+    return {
+        "short_summary": f"AI-портрет не собрался: {reason}",
+        "full_report": (
+            "## AI-синтез временно недоступен\n"
+            f"Причина: **{reason}**\n\n"
+            "Расчётные данные (числа и арканы) выше — они корректны. "
+            "AI-портрет соберётся, как только провайдер ответит "
+            "(проверь баланс OpenRouter и слаг модели в `OPENROUTER_MODEL`)."
+        ),
+        "action_plan": "",
+    }

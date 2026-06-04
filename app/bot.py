@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import date
 
 from telegram import ReplyKeyboardMarkup, Update
@@ -71,8 +72,21 @@ async def got_request(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         main_request=text,
         analysis_type=ctx.user_data["analysis_type"],
     )
-    profile = await asyncio.to_thread(build_profile, req)
-    await asyncio.to_thread(database.save_profile, profile.model_dump(mode="json"), update.effective_user.id)
+    try:
+        profile = await asyncio.to_thread(build_profile, req)
+    except Exception as e:  # noqa: BLE001 — пользователь не должен зависать
+        logging.exception("build_profile failed")
+        await update.message.reply_text(
+            f"Не получилось собрать разбор: {type(e).__name__}: {e}\n/start — попробовать снова."
+        )
+        return ConversationHandler.END
+
+    try:
+        await asyncio.to_thread(
+            database.save_profile, profile.model_dump(mode="json"), update.effective_user.id
+        )
+    except Exception:  # noqa: BLE001 — сохранение не должно блокировать выдачу отчёта
+        logging.exception("save_profile failed")
 
     await _send_long(update, profile.report["full_report"])
     await update.message.reply_text("Готово. /start — новый разбор.")
