@@ -66,6 +66,8 @@ BTN_EDIT_PLACE = "📍 Место рождения"
 BTN_EDIT_GENDER = "⚧ Пол"
 BTN_BACK = "⬅️ В меню"
 BTN_SKIP = "⏭️ Пропустить"
+# Совпадает с кнопкой И с ручным вводом: «Пропустить», пропустить, skip — в любом регистре/кавычках.
+_SKIP_RE = re.compile(r"пропуст|skip", re.IGNORECASE)
 
 _ANALYSIS = {
     BTN_PERSON: (AnalysisType.personality, "Разбор личности"),
@@ -810,7 +812,7 @@ async def _send_long(msg, text: str) -> None:
 def build_application() -> Application:
     app = Application.builder().token(_token()).build()
 
-    skip = MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), onb_skip)
+    skip = MessageHandler(filters.Regex(_SKIP_RE), onb_skip)
     common_fallbacks = [
         CommandHandler("cancel", cmd_cancel),
         CommandHandler("menu", cmd_menu),
@@ -842,7 +844,7 @@ def build_application() -> Application:
     app.add_handler(conv)
 
     # Добавление партнёра — отдельная беседа, вход по инлайн-кнопке «Добавить».
-    pskip = MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), partner_skip)
+    pskip = MessageHandler(filters.Regex(_SKIP_RE), partner_skip)
     partner_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(partner_add_start, pattern="^p:add$")],
         states={
