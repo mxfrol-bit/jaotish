@@ -11,11 +11,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import date
 
-from telegram import ReplyKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -168,7 +175,7 @@ async def _finish_or_run(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("Выбери разбор:", reply_markup=MAIN_MENU)
         return ConversationHandler.END
     user = await asyncio.to_thread(database.get_user, update.effective_user.id)
-    await _do_analysis(update, label, user)
+    await _do_analysis(update.message, update.effective_user.id, label, user)
     return ConversationHandler.END
 
 
@@ -184,7 +191,7 @@ async def analysis_entry(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     has_time = bool(user.get("birth_time"))
     has_place = bool(user.get("timezone") and user.get("lat") is not None)
     if has_time and has_place:
-        await _do_analysis(update, label, user)
+        await _do_analysis(update.message, update.effective_user.id, label, user)
         return ConversationHandler.END
 
     # данных не хватает — задаём вопросы, разбор запустим сразу после
@@ -205,9 +212,24 @@ async def analysis_entry(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     return ASK_PLACE
 
 
-async def _do_analysis(update: Update, label: str, user: dict) -> None:
-    """Считает профиль с живыми статусами ожидания и присылает отчёт."""
+async def _do_analysis(msg, telegram_id: int, label: str, user: dict, force: bool = False) -> None:
+    """Считает профиль с живыми статусами ожидания и присылает отчёт по разделам.
+
+    Перед расчётом проверяет кэш в базе: если такой же разбор уже есть и данные
+    не менялись — отдаёт его, не гоняя AI повторно. force=True — пересчитать заново.
+    """
     atype, request = _ANALYSIS[label]
+    today = date.today()
+
+    if not force:
+        rec = await asyncio.to_thread(database.find_recent_profile, telegram_id, atype.value)
+        cached = _valid_cache(rec, user, atype, today)
+        if cached:
+            await msg.reply_text(f"{label}: беру готовый разбор из памяти 📂")
+            await _present(msg, cached)
+            await msg.reply_text("Выбери следующий разбор:", reply_markup=MAIN_MENU)
+            return
+
     has_astro = bool(user.get("birth_time") and user.get("timezone"))
     stages = _STAGES_ASTRO if has_astro else _STAGES_BASIC
 
@@ -224,7 +246,7 @@ async def _do_analysis(update: Update, label: str, user: dict) -> None:
         analysis_type=atype,
     )
 
-    status = await update.message.reply_text(f"{label}\n{stages[0]}")
+    status = await msg.reply_text(f"{label}\n{stages[0]}")
     task = asyncio.create_task(asyncio.to_thread(build_profile, req))
     idx = 0
     while True:
@@ -244,10 +266,9 @@ async def _do_analysis(update: Update, label: str, user: dict) -> None:
         await status.edit_text(f"Не получилось собрать разбор: {type(e).__name__}: {e}")
         return
 
+    data = profile.model_dump(mode="json")
     try:
-        await asyncio.to_thread(
-            database.save_profile, profile.model_dump(mode="json"), update.effective_user.id
-        )
+        await asyncio.to_thread(database.save_profile, data, telegram_id)
     except Exception:  # noqa: BLE001
         logging.exception("save_profile failed")
 
@@ -255,8 +276,125 @@ async def _do_analysis(update: Update, label: str, user: dict) -> None:
         await status.edit_text(f"{label}: готово ✅")
     except Exception:  # noqa: BLE001
         pass
-    await _send_long(update, profile.report["full_report"])
-    await update.message.reply_text("Выбери следующий разбор:", reply_markup=MAIN_MENU)
+    await _present(msg, data)
+    await msg.reply_text("Выбери следующий разбор:", reply_markup=MAIN_MENU)
+
+
+# ---------- кэш, разбивка отчёта на разделы-кнопки ----------
+def _valid_cache(rec: dict | None, user: dict, atype: AnalysisType, today: date) -> dict | None:
+    """Годен ли сохранённый разбор: данные не менялись, а период — ещё и свежий (сегодня)."""
+    if not rec:
+        return None
+    data = rec.get("data") or {}
+    ui = data.get("user_input") or {}
+    if (
+        ui.get("birth_date") != user.get("birth_date")
+        or (ui.get("birth_time") or None) != (user.get("birth_time") or None)
+        or (ui.get("birth_place") or None) != (user.get("birth_place") or None)
+    ):
+        return None
+    if atype == AnalysisType.current_period:
+        created = (rec.get("created_at") or "")[:10]
+        if created != today.isoformat():
+            return None
+    if not (data.get("report") or {}).get("full_report"):
+        return None
+    return data
+
+
+_SECTION_EMOJI = [
+    ("резюме", "📋"), ("ядро", "🧬"), ("сильн", "💪"), ("конфликт", "⚔️"),
+    ("сценари", "🔁"), ("тень", "🌑"), ("слаб", "🌑"), ("отношени", "❤️"),
+    ("любов", "❤️"), ("близост", "❤️"), ("притягива", "🧲"), ("работ", "💼"),
+    ("деньг", "💰"), ("карьер", "📈"), ("реализаци", "📈"), ("ресурс", "🔋"),
+    ("энерги", "🔋"), ("выгоран", "🔥"), ("риск", "⚠️"), ("игнориров", "🚨"),
+    ("период", "🌗"), ("сейчас", "⏳"), ("год", "📅"), ("месяц", "📅"),
+    ("недел", "🗓️"), ("7 дней", "✅"), ("30 дней", "🎯"), ("возможност", "✨"),
+    ("укрепля", "🤝"), ("проявля", "🎭"), ("итог", "🏁"), ("расчётные", "🔢"),
+    ("система пока", "🛰️"),
+]
+
+
+def _emoji(title: str) -> str:
+    low = title.lower()
+    for key, emo in _SECTION_EMOJI:
+        if key in low:
+            return emo
+    return "▪️"
+
+
+def parse_sections(full_report: str) -> list[tuple[str, str]]:
+    """Режем отчёт на разделы по заголовкам уровня ## → [(заголовок, тело), …]."""
+    parts = re.split(r"(?m)^## ", full_report)
+    sections: list[tuple[str, str]] = []
+    for part in parts[1:]:
+        title = part.partition("\n")[0].strip()
+        body = "## " + part.strip()
+        sections.append((title, body))
+    return sections
+
+
+def _sections_keyboard(pid: str, sections: list[tuple[str, str]], atype_val: str) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for i, (title, _) in enumerate(sections):
+        label = f"{_emoji(title)} {title}"
+        if len(label) > 32:
+            label = label[:31] + "…"
+        row.append(InlineKeyboardButton(label, callback_data=f"s:{pid}:{i}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("🔄 Сделать заново", callback_data=f"r:{atype_val}")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _present(msg, data: dict) -> None:
+    """Показать разбор: короткий тизер + кнопки-разделы (отчёт не вываливаем стеной текста)."""
+    report = data.get("report") or {}
+    full = report.get("full_report") or ""
+    pid = data.get("profile_id") or ""
+    atype_val = (data.get("user_input") or {}).get("analysis_type") or "personality"
+    sections = parse_sections(full)
+    if not sections or not pid:
+        await _send_long(msg, full)
+        return
+    teaser = (report.get("short_summary") or "Готово — разбор собран.").strip()
+    await msg.reply_text(
+        f"{teaser}\n\n👇 Разбор разложен по разделам — жми, что открыть. "
+        "«🔄 Сделать заново» — пересчитать с нуля.",
+        reply_markup=_sections_keyboard(pid, sections, atype_val),
+    )
+
+
+async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка инлайн-кнопок: s:<pid>:<idx> — раздел; r:<atype> — пересчёт."""
+    q = update.callback_query
+    await q.answer()
+    data = q.data or ""
+    if data.startswith("s:"):
+        _, pid, idx = data.split(":", 2)
+        profile = await asyncio.to_thread(database.get_profile, pid)
+        if not profile:
+            await q.message.reply_text("Этот разбор уже устарел — сделай новый из меню.")
+            return
+        sections = parse_sections((profile.get("report") or {}).get("full_report") or "")
+        i = int(idx)
+        if 0 <= i < len(sections):
+            await _send_long(q.message, sections[i][1])
+    elif data.startswith("r:"):
+        atype_val = data.split(":", 1)[1]
+        label = _LABEL_BY_TYPE.get(atype_val)
+        user = await asyncio.to_thread(database.get_user, q.from_user.id)
+        if label and user and user.get("birth_date"):
+            await _do_analysis(q.message, q.from_user.id, label, user, force=True)
+        else:
+            await q.message.reply_text("Нет данных для пересчёта — нажми /start.")
+
+
+_LABEL_BY_TYPE = {atype.value: label for label, (atype, _req) in _ANALYSIS.items()}
 
 
 # ---------- мои данные ----------
@@ -382,16 +520,16 @@ async def _save_place(telegram_id: int, raw: str) -> tuple[bool, str]:
     )
 
 
-async def _send_long(update: Update, text: str) -> None:
+async def _send_long(msg, text: str) -> None:
     """Telegram лимит ~4096 символов — режем по абзацам."""
     limit = 3800
     while text:
         if len(text) <= limit:
-            await update.message.reply_text(text)
+            await msg.reply_text(text)
             break
         cut = text.rfind("\n", 0, limit)
         cut = cut if cut > 0 else limit
-        await update.message.reply_text(text[:cut])
+        await msg.reply_text(text[:cut])
         text = text[cut:].lstrip("\n")
 
 
@@ -424,6 +562,7 @@ def build_application() -> Application:
 
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DATA}$"), show_data))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BACK}$"), back_to_menu))
+    app.add_handler(CallbackQueryHandler(on_callback))
     return app
 
 

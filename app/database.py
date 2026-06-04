@@ -57,6 +57,23 @@ def get_profile(profile_id: str) -> Optional[dict[str, Any]]:
     return res.data[0]["data"] if res.data else None
 
 
+def find_recent_profile(telegram_id: int, analysis_type: str) -> Optional[dict[str, Any]]:
+    """Последний сохранённый разбор этого типа — для кэша (не гонять AI повторно).
+    Возвращает {data, created_at} или None."""
+    if supabase is None:
+        return None
+    res = (
+        supabase.table("me_profiles")
+        .select("data,created_at")
+        .eq("telegram_id", telegram_id)
+        .eq("analysis_type", analysis_type)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
 def list_profiles(telegram_id: int, limit: int = 10) -> list[dict[str, Any]]:
     if supabase is None:
         return []
