@@ -35,7 +35,7 @@ from .calc import ephemeris
 from .engine import build_profile
 from .models import AnalysisType, ProfileRequest
 
-# --- состояния онбординга/редактирования ---
+# --- состояния онбординга/редактирования/добавления партнёра ---
 (
     ASK_NAME,
     ASK_BIRTHDATE,
@@ -45,17 +45,24 @@ from .models import AnalysisType, ProfileRequest
     EDIT_BIRTHDATE,
     EDIT_TIME,
     EDIT_PLACE,
-) = range(8)
+    EDIT_GENDER,
+    P_NAME,
+    P_DATE,
+    P_TIME,
+    P_PLACE,
+) = range(13)
 
 # --- кнопки меню ---
 BTN_PERSON = "🧬 Личность"
 BTN_PERIOD = "🌗 Текущий период"
 BTN_WORK = "💼 Работа и деньги"
+BTN_COMPAT = "❤️ Совместимость"
 BTN_DATA = "👤 Мои данные"
 BTN_EDIT_NAME = "✏️ Изменить имя"
 BTN_EDIT_DATE = "✏️ Изменить дату"
 BTN_EDIT_TIME = "🕐 Время рождения"
 BTN_EDIT_PLACE = "📍 Место рождения"
+BTN_EDIT_GENDER = "⚧ Пол"
 BTN_BACK = "⬅️ В меню"
 BTN_SKIP = "⏭️ Пропустить"
 
@@ -66,10 +73,14 @@ _ANALYSIS = {
 }
 
 MAIN_MENU = ReplyKeyboardMarkup(
-    [[BTN_PERSON, BTN_PERIOD], [BTN_WORK, BTN_DATA]], resize_keyboard=True
+    [[BTN_PERSON, BTN_PERIOD], [BTN_WORK, BTN_COMPAT], [BTN_DATA]], resize_keyboard=True
 )
 DATA_MENU = ReplyKeyboardMarkup(
-    [[BTN_EDIT_NAME, BTN_EDIT_DATE], [BTN_EDIT_TIME, BTN_EDIT_PLACE], [BTN_BACK]],
+    [
+        [BTN_EDIT_NAME, BTN_EDIT_DATE],
+        [BTN_EDIT_TIME, BTN_EDIT_PLACE],
+        [BTN_EDIT_GENDER, BTN_BACK],
+    ],
     resize_keyboard=True,
 )
 SKIP_MENU = ReplyKeyboardMarkup([[BTN_SKIP]], resize_keyboard=True)
@@ -392,9 +403,178 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await _do_analysis(q.message, q.from_user.id, label, user, force=True)
         else:
             await q.message.reply_text("Нет данных для пересчёта — нажми /start.")
+    elif data.startswith("pd:"):  # удалить партнёра
+        pid = data.split(":", 1)[1]
+        await asyncio.to_thread(database.delete_partner, pid)
+        await q.message.reply_text("Партнёр удалён.")
+        await _send_partner_menu(q.message, q.from_user.id)
+    elif data.startswith("p:") and data != "p:add":  # разбор с сохранённым партнёром
+        pid = data.split(":", 1)[1]
+        await _do_synastry(q.message, q.from_user.id, pid)
 
 
 _LABEL_BY_TYPE = {atype.value: label for label, (atype, _req) in _ANALYSIS.items()}
+
+
+# ---------- совместимость (синастрия) ----------
+async def compat_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Кнопка «Совместимость»: список сохранённых партнёров + «Добавить»."""
+    user = await asyncio.to_thread(database.get_user, update.effective_user.id)
+    if not user or not user.get("birth_date"):
+        await update.message.reply_text("Сначала сохрани свои данные — /start.")
+        return
+    await _send_partner_menu(update.message, update.effective_user.id)
+
+
+async def _send_partner_menu(msg, telegram_id: int) -> None:
+    partners = await asyncio.to_thread(database.list_partners, telegram_id)
+    rows = []
+    for p in partners:
+        title = f"❤️ {p.get('name') or 'без имени'} · {p.get('birth_date') or ''}".strip()
+        rows.append([InlineKeyboardButton(title[:40], callback_data=f"p:{p['partner_id']}")])
+        rows.append([InlineKeyboardButton("🗑 удалить", callback_data=f"pd:{p['partner_id']}")])
+    rows.append([InlineKeyboardButton("➕ Добавить партнёра", callback_data="p:add")])
+    text = (
+        "С кем проверяем совместимость?\nВыбери партнёра или добавь нового."
+        if partners
+        else "Партнёров пока нет. Добавь первого — нужны имя и дата (время и место — по желанию)."
+    )
+    await msg.reply_text(text, reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def _do_synastry(msg, telegram_id: int, partner_id: str) -> None:
+    """Считает синастрию пользователя с сохранённым партнёром и шлёт разбор по разделам."""
+    user = await asyncio.to_thread(database.get_user, telegram_id)
+    partner = await asyncio.to_thread(database.get_partner, partner_id)
+    if not user or not partner:
+        await msg.reply_text("Не нашёл данные — попробуй ещё раз из меню.")
+        return
+
+    user_req = ProfileRequest(
+        name=user.get("name", ""), gender=user.get("gender", "") or "",
+        birth_date=date.fromisoformat(user["birth_date"]),
+        birth_time=user.get("birth_time"), birth_place=user.get("birth_place"),
+        lat=user.get("lat"), lon=user.get("lon"), timezone=user.get("timezone"),
+        analysis_type=AnalysisType.compatibility,
+    )
+    partner_req = ProfileRequest(
+        name=partner.get("name", ""), birth_date=date.fromisoformat(partner["birth_date"]),
+        birth_time=partner.get("birth_time"), birth_place=partner.get("birth_place"),
+        lat=partner.get("lat"), lon=partner.get("lon"), timezone=partner.get("timezone"),
+        analysis_type=AnalysisType.compatibility,
+    )
+
+    both_astro = bool(user.get("birth_time") and user.get("timezone")
+                      and partner.get("birth_time") and partner.get("timezone"))
+    stages = _STAGES_ASTRO if both_astro else _STAGES_BASIC
+    label = f"❤️ {user.get('name') or 'Ты'} × {partner.get('name') or 'партнёр'}"
+
+    status = await msg.reply_text(f"{label}\n{stages[0]}")
+    task = asyncio.create_task(asyncio.to_thread(build_synastry, user_req, partner_req))
+    idx = 0
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=2.4)
+        if task in done:
+            break
+        idx += 1
+        try:
+            await status.edit_text(f"{label}\n{stages[idx % len(stages)]}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    try:
+        profile = task.result()
+    except Exception as e:  # noqa: BLE001
+        logging.exception("build_synastry failed")
+        await status.edit_text(f"Не получилось собрать совместимость: {type(e).__name__}: {e}")
+        return
+
+    data = profile.model_dump(mode="json")
+    try:
+        await asyncio.to_thread(database.save_profile, data, telegram_id)
+    except Exception:  # noqa: BLE001
+        logging.exception("save_profile (synastry) failed")
+    try:
+        await status.edit_text(f"{label}: готово ✅")
+    except Exception:  # noqa: BLE001
+        pass
+    await _present(msg, data)
+    await msg.reply_text("Выбери следующий разбор:", reply_markup=MAIN_MENU)
+
+
+# ---------- добавление партнёра ----------
+async def partner_add_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.callback_query.answer()
+    ctx.user_data["np"] = {}
+    await update.callback_query.message.reply_text("Имя партнёра:")
+    return P_NAME
+
+
+async def partner_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ctx.user_data.setdefault("np", {})["name"] = update.message.text.strip()
+    await update.message.reply_text("Дата рождения партнёра (ГГГГ-ММ-ДД):")
+    return P_DATE
+
+
+async def partner_date(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        bd = date.fromisoformat(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("Нужен формат ГГГГ-ММ-ДД, например 1992-08-20.")
+        return P_DATE
+    ctx.user_data.setdefault("np", {})["birth_date"] = bd.isoformat()
+    await update.message.reply_text(
+        "Время рождения партнёра ЧЧ:ММ (для астро) — или «Пропустить».",
+        reply_markup=SKIP_MENU,
+    )
+    return P_TIME
+
+
+async def partner_time(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    txt = update.message.text.strip()
+    try:
+        hh, mm = (int(x) for x in txt.split(":")[:2])
+        assert 0 <= hh <= 23 and 0 <= mm <= 59
+    except (ValueError, IndexError, AssertionError):
+        await update.message.reply_text("Нужен формат ЧЧ:ММ, например 09:15. Или «Пропустить».")
+        return P_TIME
+    ctx.user_data.setdefault("np", {})["birth_time"] = f"{hh:02d}:{mm:02d}"
+    await update.message.reply_text(
+        "Город рождения партнёра (например: Москва) — или «Пропустить».", reply_markup=SKIP_MENU
+    )
+    return P_PLACE
+
+
+async def partner_place(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("📍 Ищу город на карте…")
+    geo = await asyncio.to_thread(ephemeris.resolve_geo, update.message.text.strip())
+    if geo is None:
+        await update.message.reply_text(
+            "Не нашёл город. Попробуй иначе или «Пропустить».", reply_markup=SKIP_MENU
+        )
+        return P_PLACE
+    np = ctx.user_data.setdefault("np", {})
+    np.update({
+        "birth_place": update.message.text.strip(),
+        "lat": geo["lat"], "lon": geo["lon"], "timezone": geo["timezone"],
+    })
+    return await _finish_partner(update, ctx)
+
+
+async def partner_skip(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    return await _finish_partner(update, ctx)
+
+
+async def _finish_partner(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сохранить партнёра и сразу запустить разбор совместимости."""
+    np = ctx.user_data.pop("np", {})
+    if not np.get("name") or not np.get("birth_date"):
+        await update.message.reply_text("Не хватило имени или даты — начни заново.", reply_markup=MAIN_MENU)
+        return ConversationHandler.END
+    partner_id = await asyncio.to_thread(database.add_partner, update.effective_user.id, np)
+    await update.message.reply_text(f"Партнёр «{np['name']}» сохранён. Считаю совместимость…", reply_markup=MAIN_MENU)
+    await _do_synastry(update.message, update.effective_user.id, partner_id)
+    return ConversationHandler.END
 
 
 # ---------- мои данные ----------
@@ -474,12 +654,46 @@ async def edit_place_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int
     return ConversationHandler.END
 
 
+async def edit_gender_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "Укажи пол одной буквой: м или ж.\n"
+        "Он нужен для направления столпов удачи в Ба Цзы (大運)."
+    )
+    return EDIT_GENDER
+
+
+async def edit_gender_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    g = update.message.text.strip().lower()[:1]
+    if g not in ("м", "ж", "m", "f"):
+        await update.message.reply_text("Нужна буква м или ж.")
+        return EDIT_GENDER
+    gender = "м" if g in ("м", "m") else "ж"
+    await asyncio.to_thread(database.upsert_user, update.effective_user.id, {"gender": gender})
+    await update.message.reply_text(f"Пол сохранён: {gender}.", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
+
+
 async def back_to_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Меню:", reply_markup=MAIN_MENU)
 
 
+async def cmd_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """Команда /menu — вернуться к главному меню из любого места."""
+    ctx.user_data.pop("pending_label", None)
+    await update.message.reply_text("Главное меню:", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
+
+
+async def cmd_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """Команда /data — данные пользователя из любого места."""
+    ctx.user_data.pop("pending_label", None)
+    await show_data(update, ctx)
+    return ConversationHandler.END
+
+
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data.pop("pending_label", None)
+    ctx.user_data.pop("np", None)
     await update.message.reply_text("Отменено.", reply_markup=MAIN_MENU)
     return ConversationHandler.END
 
@@ -537,6 +751,11 @@ def build_application() -> Application:
     app = Application.builder().token(_token()).build()
 
     skip = MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), onb_skip)
+    common_fallbacks = [
+        CommandHandler("cancel", cmd_cancel),
+        CommandHandler("menu", cmd_menu),
+        CommandHandler("data", cmd_data),
+    ]
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", cmd_start),
@@ -545,6 +764,7 @@ def build_application() -> Application:
             MessageHandler(filters.Regex(f"^{BTN_EDIT_DATE}$"), edit_date_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_TIME}$"), edit_time_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_PLACE}$"), edit_place_start),
+            MessageHandler(filters.Regex(f"^{BTN_EDIT_GENDER}$"), edit_gender_start),
         ],
         states={
             ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, onb_name)],
@@ -555,11 +775,29 @@ def build_application() -> Application:
             EDIT_BIRTHDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_date_save)],
             EDIT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_time_save)],
             EDIT_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_place_save)],
+            EDIT_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_gender_save)],
         },
-        fallbacks=[CommandHandler("cancel", cmd_cancel)],
+        fallbacks=common_fallbacks,
     )
     app.add_handler(conv)
 
+    # Добавление партнёра — отдельная беседа, вход по инлайн-кнопке «Добавить».
+    pskip = MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), partner_skip)
+    partner_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(partner_add_start, pattern="^p:add$")],
+        states={
+            P_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, partner_name)],
+            P_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, partner_date)],
+            P_TIME: [pskip, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_time)],
+            P_PLACE: [pskip, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_place)],
+        },
+        fallbacks=common_fallbacks,
+    )
+    app.add_handler(partner_conv)
+
+    app.add_handler(CommandHandler("menu", cmd_menu))
+    app.add_handler(CommandHandler("data", cmd_data))
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_COMPAT}$"), compat_menu))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DATA}$"), show_data))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BACK}$"), back_to_menu))
     app.add_handler(CallbackQueryHandler(on_callback))

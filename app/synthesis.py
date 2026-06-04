@@ -62,6 +62,27 @@ ANALYSIS_PLANS: dict[str, list[str]] = {
     ],
 }
 
+SYNASTRY_PLAN = [
+    "Короткое резюме пары", "Что вас притягивает", "Сильные стороны союза",
+    "Зоны притирки и конфликтов", "Как вы закрываете потребности друг друга",
+    "Повторяющиеся сценарии пары", "Что укрепляет связь", "Зоны риска",
+    "Что делать ближайший месяц", "Итог по совместимости",
+]
+
+SYNASTRY_TEMPLATE = """Это разбор СОВМЕСТИМОСТИ двух людей (синастрия).
+Человек A: {name_a}, дата {birth_a}.
+Человек B: {name_b}, дата {birth_b}.
+
+РАССЧИТАННАЯ СИНАСТРИЯ (детерминированный код, JSON):
+{synastry_json}
+
+Собери ОДИН цельный портрет ПАРЫ (не два отдельных разбора). Опирайся только на
+посчитанные поля: числа пути, стихии светил, межкарточные аспекты, связь господ дня.
+Если астро-аспектов нет (у кого-то нет времени/места) — честно скажи и работай по числам.
+Пиши на «вы» о паре. Markdown, каждый раздел — заголовок уровня ## с точным названием:
+{sections}
+"""
+
 USER_TEMPLATE = """Запрос пользователя: {main_request}
 Тип анализа: {analysis_type}
 Имя: {name}; пол: {gender}; дата рождения: {birth_date}.
@@ -148,6 +169,63 @@ def synthesize(user_input: dict[str, Any], modules: dict[str, Any]) -> dict[str,
 
     short = full.split("\n\n")[0][:600]
     return {"short_summary": short, "full_report": full, "action_plan": ""}
+
+
+def _post_openrouter(messages: list[dict]) -> tuple[bool, str]:
+    """Один вызов OpenRouter. Возвращает (ok, content) или (False, причина-ошибки)."""
+    try:
+        resp = requests.post(
+            f"{config.OPENROUTER_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "X-Title": "Matrix Engine",
+            },
+            json={"model": config.OPENROUTER_MODEL, "messages": messages, "temperature": 0.7},
+            timeout=90,
+        )
+    except requests.RequestException as e:
+        return False, f"сеть/таймаут OpenRouter: {e}"
+    if resp.status_code != 200:
+        return False, f"OpenRouter {resp.status_code}: {resp.text[:400]}"
+    try:
+        return True, resp.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, ValueError) as e:
+        return False, f"неожиданный ответ OpenRouter: {e}; body={resp.text[:300]}"
+
+
+def synthesize_synastry(
+    user_input_a: dict[str, Any], partner: dict[str, Any], synastry: dict[str, Any]
+) -> dict[str, str]:
+    """AI-портрет ПАРЫ поверх детерминированной синастрии. Заглушка, если нет ключа."""
+    if not config.ai_ready():
+        return {
+            "short_summary": "AI-синтез не настроен (нет OPENROUTER_API_KEY).",
+            "full_report": "## Совместимость посчитана\nЧисла и аспекты выше корректны, "
+            "AI-портрет соберётся при заданном OPENROUTER_API_KEY.\n\n"
+            "```json\n" + json.dumps(synastry, ensure_ascii=False, indent=2) + "\n```",
+            "action_plan": "",
+        }
+    sections = "\n".join(f"{i}. {t}" for i, t in enumerate(SYNASTRY_PLAN, 1))
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT.format(style=config.REPORT_STYLE)},
+        {
+            "role": "user",
+            "content": SYNASTRY_TEMPLATE.format(
+                name_a=user_input_a.get("name", ""),
+                birth_a=user_input_a.get("birth_date", ""),
+                name_b=partner.get("name", ""),
+                birth_b=partner.get("birth_date", ""),
+                synastry_json=json.dumps(synastry, ensure_ascii=False, indent=2),
+                sections=sections,
+            ),
+        },
+    ]
+    ok, content = _post_openrouter(messages)
+    if not ok:
+        return _error_report({"synastry": synastry}, content)
+    short = content.split("\n\n")[0][:600]
+    return {"short_summary": short, "full_report": content, "action_plan": ""}
 
 
 def _error_report(filtered: dict[str, Any], reason: str) -> dict[str, str]:

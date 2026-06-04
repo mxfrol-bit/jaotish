@@ -7,7 +7,7 @@ from typing import Any
 
 from . import config, synthesis
 from .calc import matrix_calc
-from .models import Profile, ProfileRequest, UserInput
+from .models import AnalysisType, Profile, ProfileRequest, UserInput
 
 _STATUS_RU = {
     "calculated": "✅ посчитано",
@@ -62,6 +62,19 @@ def _calc_header(modules: dict[str, Any]) -> str:
             "",
         ]
 
+    tr = modules.get("transits", {})
+    if tr.get("calculation_status") == "calculated":
+        asp = tr.get("transit_aspects", [])
+        pr = tr.get("progressed", {})
+        lines += [
+            f"**Транзиты и прогрессии (на {tr.get('as_of')}):**",
+            "- Ключевые транзиты: "
+            + (", ".join(f"{h['transit']} {h['aspect']} {h['natal']}" for h in asp[:5]) or "значимых нет"),
+            f"- Прогрессивные Солнце/Луна: **{pr.get('sun', {}).get('sign', '—')}** / "
+            f"**{pr.get('moon', {}).get('sign', '—')}**",
+            "",
+        ]
+
     jyo = modules.get("jyotish", {})
     if jyo.get("calculation_status") == "calculated":
         nk = jyo["nakshatra"]
@@ -71,6 +84,8 @@ def _calc_header(modules: dict[str, Any]) -> str:
             f"- Лагна: **{jyo['lagna']['sign']}**, Луна (раши): **{jyo['moon_rashi']}**",
             f"- Накшатра Луны: **{nk['name']}** (пада {nk['pada']})",
             f"- Текущая махадаша: **{ds['lord']}** (осталось ~{ds['remaining_years']} лет)",
+            f"- Навамса (D9): лагна **{jyo['navamsa_d9']['lagna']}**, "
+            f"Луна **{jyo['navamsa_d9']['moon']}**, Венера **{jyo['navamsa_d9']['venus']}**",
             "",
         ]
 
@@ -86,9 +101,20 @@ def _calc_header(modules: dict[str, Any]) -> str:
             f"доминирующая стихия: **{baz['dominant_element']}**",
             "",
         ]
+        lp = baz.get("luck_pillars")
+        if lp:
+            approx = " (направление приблизительно — уточни пол)" if lp.get("assumed_direction") else ""
+            nxt = ", ".join(
+                f"{p['from_age']:g}+: {p['stem']}-{p['branch']} ({p['branch_element']})"
+                for p in lp["pillars"][:4]
+            )
+            lines += [
+                f"- Столпы удачи (大運, {lp['direction']}{approx}), вход с ~{lp['start_age']:g} лет: {nxt}",
+                "",
+            ]
 
     lines += ["**Статусы методик:**"]
-    for key in ("numerology", "arcana_22", "western_astrology", "jyotish", "bazi"):
+    for key in ("numerology", "arcana_22", "western_astrology", "transits", "jyotish", "bazi"):
         st = modules.get(key, {}).get("calculation_status")
         if st:
             lines.append(f"- {key}: {_STATUS_RU.get(st, st)}")
@@ -107,12 +133,97 @@ def _resolve_geo(req: ProfileRequest) -> dict | None:
     return None
 
 
+def _synastry_header(syn: dict, name_a: str, name_b: str) -> str:
+    lines = [f"## Совместимость: {name_a or 'Ты'} и {name_b or 'партнёр'}", ""]
+    num = syn.get("numerology", {})
+    lines += [
+        "**Нумерология пары:**",
+        f"- Числа пути: **{num.get('life_path_a')}** и **{num.get('life_path_b')}**"
+        + (" — совпадают" if num.get("same_life_path") else ""),
+        "",
+    ]
+    sm = syn.get("sun_moon_elements")
+    if sm:
+        lines += [
+            "**Светила (западная астрология):**",
+            f"- Солнца: {sm['a_sun']} / {sm['b_sun']} — {sm['sun_relation']}",
+            f"- Луны: {sm['a_moon']} / {sm['b_moon']} — {sm['moon_relation']}",
+            "",
+        ]
+    asp = syn.get("synastry_aspects")
+    if asp:
+        lines += [
+            "**Межкарточные аспекты:**",
+            "- " + "; ".join(f"{h['pair']} — {h['aspect']} (орб {h['orb']}°)" for h in asp[:6]),
+            "",
+        ]
+    bz = syn.get("bazi_link")
+    if bz:
+        lines += ["**Ба Цзы (господа дня):**", f"- {bz['relation']}", ""]
+    if syn.get("astro_note"):
+        lines += [f"_{syn['astro_note']}_", ""]
+    return "\n".join(lines)
+
+
+def build_synastry(
+    user_req: ProfileRequest, partner_req: ProfileRequest, today: date | None = None
+) -> Profile:
+    """Разбор совместимости двух людей: модули обоих → синастрия → AI-портрет пары."""
+    from .calc import synastry as syn_calc
+
+    today = today or date.today()
+    geo_a = _resolve_geo(user_req)
+    geo_b = _resolve_geo(partner_req)
+    modules_a = matrix_calc.compute_all(user_req.birth_date, user_req.name, today, user_req.birth_time, geo_a, user_req.gender)
+    modules_b = matrix_calc.compute_all(partner_req.birth_date, partner_req.name, today, partner_req.birth_time, geo_b, partner_req.gender)
+
+    syn = syn_calc.compute(modules_a, modules_b, user_req.name, partner_req.name)
+
+    user_input = UserInput(
+        name=user_req.name,
+        gender=user_req.gender,
+        birth_date=user_req.birth_date,
+        birth_time=user_req.birth_time,
+        birth_place=user_req.birth_place,
+        main_request=f"совместимость с {partner_req.name or 'партнёром'}",
+        analysis_type=AnalysisType.compatibility,
+    )
+
+    ai = synthesis.synthesize_synastry(
+        user_input.model_dump(mode="json"),
+        {"name": partner_req.name, "birth_date": partner_req.birth_date.isoformat()},
+        syn,
+    )
+
+    header = _synastry_header(syn, user_req.name, partner_req.name)
+    full_report = header + "\n---\n\n" + ai["full_report"]
+
+    return Profile(
+        profile_id=str(uuid.uuid4()),
+        user_input=user_input,
+        geo=geo_a or {"lat": None, "lon": None, "timezone": ""},
+        calculation_modules={"person_a": modules_a, "person_b": modules_b, "synastry": syn},
+        synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
+        report={
+            "short_summary": ai["short_summary"],
+            "full_report": full_report,
+            "action_plan": ai.get("action_plan", ""),
+        },
+        meta={
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "method_version": config.METHOD_VERSION,
+            "partner": {"name": partner_req.name, "birth_date": partner_req.birth_date.isoformat()},
+            "feedback": [],
+        },
+    )
+
+
 def build_profile(req: ProfileRequest, today: date | None = None) -> Profile:
     today = today or date.today()
     birth = req.birth_date
 
     geo = _resolve_geo(req)
-    modules = matrix_calc.compute_all(birth, req.name, today, req.birth_time, geo)
+    modules = matrix_calc.compute_all(birth, req.name, today, req.birth_time, geo, req.gender)
 
     user_input = UserInput(
         name=req.name,

@@ -136,6 +136,7 @@ def compute_all(
     today: Optional[date] = None,
     birth_time: Optional[str] = None,
     geo: Optional[dict] = None,
+    gender: str = "",
 ) -> dict:
     """Все модули. Астро-модули считаются при наличии времени+места, иначе insufficient_input."""
     today = today or date.today()
@@ -145,8 +146,9 @@ def compute_all(
         "numerology": numerology(birth, name, today),
         "arcana_22": arcana_22(birth, today),
         "western_astrology": astrology.western(birth, birth_time, geo),
+        "transits": astrology.transits(birth, birth_time, geo, today),
         "jyotish": astrology.jyotish(birth, birth_time, geo, today),
-        "bazi": astrology.bazi(birth, birth_time, geo),
+        "bazi": astrology.bazi(birth, birth_time, geo, gender),
         "archetypes": {"primary": "", "secondary": "", "shadow": "", "growth_path": ""},
         "psychology_optional": {"enabled": False},
     }

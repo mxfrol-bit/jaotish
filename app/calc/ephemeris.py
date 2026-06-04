@@ -141,6 +141,26 @@ def planet_positions(jd_ut: float, sidereal: bool = False) -> dict:
     return out
 
 
+def noon_jd(d: date) -> float:
+    """Юлианский день на 12:00 UT — для транзитов/прогрессий (без привязки к месту)."""
+    return swe.julday(d.year, d.month, d.day, 12.0)
+
+
+def separation(lon_a: float, lon_b: float) -> float:
+    """Угловое расстояние между двумя долготами, 0..180°."""
+    diff = abs((lon_a - lon_b) % 360.0)
+    return diff if diff <= 180.0 else 360.0 - diff
+
+
+def match_aspect(lon_a: float, lon_b: float, aspects: list[dict]) -> Optional[dict]:
+    """Какой аспект (из конфигурации) образуют две долготы. None — вне орбиса."""
+    sep = separation(lon_a, lon_b)
+    for asp in aspects:
+        if abs(sep - asp["angle"]) <= asp["orb"]:
+            return {"name": asp["name"], "angle": asp["angle"], "orb": round(abs(sep - asp["angle"]), 2)}
+    return None
+
+
 def ascendant_houses(jd_ut: float, lat: float, lon: float, sidereal: bool = False) -> dict:
     """Асцендент, MC и 12 куспидов домов (Placidus). sidereal=True → айянамша Лахири."""
     flags = swe.FLG_SIDEREAL if sidereal else 0

@@ -1,7 +1,14 @@
 {
   "western": {
     "house_system": "Placidus",
-    "zodiac": "tropical"
+    "zodiac": "tropical",
+    "aspects": [
+      {"name": "соединение", "angle": 0, "orb": 6},
+      {"name": "секстиль", "angle": 60, "orb": 4},
+      {"name": "квадрат", "angle": 90, "orb": 6},
+      {"name": "тригон", "angle": 120, "orb": 6},
+      {"name": "оппозиция", "angle": 180, "orb": 6}
+    ]
   },
   "jyotish": {
     "ayanamsa": "Lahiri",

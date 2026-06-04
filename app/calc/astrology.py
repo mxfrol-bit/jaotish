@@ -58,6 +58,64 @@ def _short(p: dict) -> dict:
     return out
 
 
+# ---------- транзиты и прогрессии (текущие влияния) ----------
+# Медленные планеты дают «погоду» периода; быстрые транзиты шумят и их опускаем.
+_TRANSIT_FROM = ("jupiter", "saturn", "uranus", "neptune", "pluto")
+_TRANSIT_TO = ("sun", "moon", "mercury", "venus", "mars")
+
+
+def transits(birth: date, birth_time: Optional[str], geo: Optional[dict], today: Optional[date] = None) -> dict:
+    """Транзиты медленных планет к наталу + вторичные прогрессии Солнца/Луны на сегодня."""
+    if not _have_birth_data(birth_time, geo):
+        return dict(_INSUFFICIENT)
+    today = today or date.today()
+    aspects_cfg = _CONFIG["western"]["aspects"]
+
+    natal_jd = eph.to_julian_ut(birth, birth_time, geo["timezone"])
+    natal = eph.planet_positions(natal_jd, sidereal=False)
+    natal_houses = eph.ascendant_houses(natal_jd, geo["lat"], geo["lon"], sidereal=False)
+    natal_points = {k: natal[k]["lon"] for k in _TRANSIT_TO}
+    natal_points["ascendant"] = natal_houses["ascendant"]["lon"]
+    natal_points["midheaven"] = natal_houses["midheaven"]["lon"]
+
+    transit_now = eph.planet_positions(eph.noon_jd(today), sidereal=False)
+
+    hits: list[dict] = []
+    for t_key in _TRANSIT_FROM:
+        t_lon = transit_now[t_key]["lon"]
+        for n_key, n_lon in natal_points.items():
+            asp = eph.match_aspect(t_lon, n_lon, aspects_cfg)
+            if asp:
+                hits.append({
+                    "transit": eph.PLANETS_RU[t_key],
+                    "aspect": asp["name"],
+                    "natal": _POINT_RU.get(n_key, n_key),
+                    "orb": asp["orb"],
+                    "transit_sign": transit_now[t_key]["sign"],
+                })
+    hits.sort(key=lambda h: h["orb"])
+
+    # вторичные прогрессии: «день за год» — natal_jd сдвигаем на возраст в днях
+    age_years = (today - birth).days / 365.25
+    prog = eph.planet_positions(natal_jd + age_years, sidereal=False)
+
+    return {
+        "calculation_status": "calculated",
+        "as_of": today.isoformat(),
+        "transit_aspects": hits[:8],
+        "progressed": {
+            "sun": _short(prog["sun"]),
+            "moon": _short(prog["moon"]),
+        },
+    }
+
+
+_POINT_RU = {
+    "sun": "Солнце", "moon": "Луна", "mercury": "Меркурий", "venus": "Венера",
+    "mars": "Марс", "ascendant": "Асцендент", "midheaven": "MC",
+}
+
+
 # ---------- джйотиш (ведическая) ----------
 _NAK_SPAN = 360.0 / 27.0
 
@@ -79,6 +137,12 @@ def jyotish(birth: date, birth_time: Optional[str], geo: Optional[dict], today: 
 
     dasha = _vimshottari(nak_index, pos_in_nak / _NAK_SPAN, birth, today, cfg)
 
+    # Навамса (D9) — дробная карта брака и дхармы. Непрерывный счёт от 0° Овна
+    # математически эквивалентен классическому правилу по стихии знака.
+    navamsa = {"lagna": _navamsa_sign(houses["ascendant"]["lon"])}
+    for k in ("sun", "moon", "venus", "mars", "jupiter", "saturn"):
+        navamsa[k] = _navamsa_sign(planets[k]["lon"])
+
     return {
         "calculation_status": "calculated",
         "zodiac": cfg["zodiac"],
@@ -90,7 +154,15 @@ def jyotish(birth: date, birth_time: Optional[str], geo: Optional[dict], today: 
         "rahu_rashi": planets["rahu"]["sign"],
         "ketu_rashi": planets["ketu"]["sign"],
         "current_dasha": dasha,
+        "navamsa_d9": navamsa,
     }
+
+
+_NAVAMSA_SPAN = 10.0 / 3.0  # 3°20' — девятая часть знака
+
+
+def _navamsa_sign(lon: float) -> str:
+    return eph.SIGNS_RU[int((lon % 360.0) // _NAVAMSA_SPAN) % 12]
 
 
 def _vimshottari(nak_index: int, fraction: float, birth: date, today: date, cfg: dict) -> dict:
@@ -114,7 +186,7 @@ def _vimshottari(nak_index: int, fraction: float, birth: date, today: date, cfg:
 
 
 # ---------- Ба Цзы (китайские четыре столпа) ----------
-def bazi(birth: date, birth_time: Optional[str], geo: Optional[dict]) -> dict:
+def bazi(birth: date, birth_time: Optional[str], geo: Optional[dict], gender: str = "") -> dict:
     if not _have_birth_data(birth_time, geo):
         return dict(_INSUFFICIENT)
     cfg = _CONFIG["bazi"]
@@ -157,12 +229,51 @@ def bazi(birth: date, birth_time: Optional[str], geo: Optional[dict]) -> dict:
         elements[p["stem_element"]] = elements.get(p["stem_element"], 0) + 1
         elements[p["branch_element"]] = elements.get(p["branch_element"], 0) + 1
 
+    luck = _luck_pillars(stems, branches, mo_stem, mo_branch, y_stem, sun_lon, birth, gender)
+
     return {
         "calculation_status": "calculated",
         "pillars": pillars,
         "day_master": {"stem": stems[d_stem]["name"], "element": stems[d_stem]["element"], "polarity": stems[d_stem]["polarity"]},
         "elements_balance": elements,
         "dominant_element": max(elements, key=elements.get),
+        "luck_pillars": luck,
+    }
+
+
+def _luck_pillars(stems, branches, mo_stem, mo_branch, y_stem, sun_lon, birth, gender, count=8):
+    """Большие столпы удачи (大運): 10-летние периоды от месячного столпа.
+
+    Направление: ян-год+муж или инь-год+жен → вперёд, иначе назад. Возраст входа —
+    по «3 дня = 1 год» (≈3° долготы Солнца до соседнего месячного рубежа).
+    """
+    male = gender.strip().lower()[:1] in ("м", "m")  # «мужской»/«male»
+    assumed = not gender.strip()
+    year_yang = (y_stem % 2 == 0)  # чётный индекс стема = ян
+    forward = (year_yang == male)
+
+    offset = (sun_lon - 315.0) % 30.0  # положение Солнца внутри текущего месячного сектора
+    deg_to_boundary = (30.0 - offset) if forward else offset
+    start_age = round(deg_to_boundary / 3.0 * 2) / 2  # шаг 0.5 года
+
+    step = 1 if forward else -1
+    pillars = []
+    for i in range(1, count + 1):
+        s = stems[(mo_stem + step * i) % 10]
+        b = branches[(mo_branch + step * i) % 12]
+        pillars.append({
+            "from_age": round(start_age + (i - 1) * 10, 1),
+            "stem": s["name"],
+            "branch": b["name"],
+            "animal": b["animal"],
+            "stem_element": s["element"],
+            "branch_element": b["element"],
+        })
+    return {
+        "direction": "вперёд" if forward else "назад",
+        "assumed_direction": assumed,
+        "start_age": start_age,
+        "pillars": pillars,
     }
 
 

@@ -88,6 +88,45 @@ def list_profiles(telegram_id: int, limit: int = 10) -> list[dict[str, Any]]:
     return res.data or []
 
 
+def add_partner(telegram_id: int, fields: dict[str, Any]) -> Optional[str]:
+    """Сохранить партнёра для синастрии. Возвращает partner_id (или None без БД)."""
+    import uuid
+
+    partner_id = str(uuid.uuid4())
+    if supabase is None:
+        return partner_id
+    row = {"partner_id": partner_id, "telegram_id": telegram_id, **fields}
+    supabase.table("me_partners").insert(row).execute()
+    return partner_id
+
+
+def list_partners(telegram_id: int, limit: int = 20) -> list[dict[str, Any]]:
+    if supabase is None:
+        return []
+    res = (
+        supabase.table("me_partners")
+        .select("partner_id,name,birth_date,birth_time,birth_place,lat,lon,timezone")
+        .eq("telegram_id", telegram_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return res.data or []
+
+
+def get_partner(partner_id: str) -> Optional[dict[str, Any]]:
+    if supabase is None:
+        return None
+    res = supabase.table("me_partners").select("*").eq("partner_id", partner_id).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def delete_partner(partner_id: str) -> None:
+    if supabase is None:
+        return
+    supabase.table("me_partners").delete().eq("partner_id", partner_id).execute()
+
+
 def add_feedback(profile_id: str, text: str, rating: Optional[int] = None) -> None:
     if supabase is None:
         return
