@@ -2,8 +2,10 @@
 
 Бот запоминает данные пользователя (имя, дата, опц. время+место) в Supabase,
 показывает меню с кнопками и запускает любой разбор одним тапом — без повторного ввода.
-Время и место рождения опциональны: без них работают числа и арканы,
-с ними разблокируются астрология, джйотиш и Ба Цзы.
+
+Время и место рождения опциональны: без них работают числа и арканы, с ними
+разблокируются астрология, джйотиш и Ба Цзы. Если разбор запущен без этих данных,
+бот сам предлагает их дать. Во время расчёта показываются живые статусы («спутники»).
 """
 from __future__ import annotations
 
@@ -72,6 +74,20 @@ _ASTRO_PITCH = (
     "или нажми «Пропустить» — числа и арканы работают и без этого."
 )
 
+# Живые статусы ожидания («вау-эффект»): крутятся, пока идёт расчёт + AI-синтез.
+_STAGES_ASTRO = [
+    "🛰️ Соединяюсь со спутниками…",
+    "🪐 Считываю положение планет и Луны…",
+    "🔢 Вычисляю числа и центральный крест арканов…",
+    "🕉️ Строю ведическую карту и столпы Ба Цзы…",
+    "🧬 Собираю всё в один цельный портрет…",
+]
+_STAGES_BASIC = [
+    "🔢 Вычисляю числа жизненного пути и судьбы…",
+    "🃏 Раскладываю центральный крест 22 арканов…",
+    "🧬 Собираю цельный портрет…",
+]
+
 
 # ---------- /start: онбординг или меню ----------
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -124,34 +140,76 @@ async def onb_time(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def onb_place(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("📍 Ищу город на карте…")
     ok, msg = await _save_place(update.effective_user.id, update.message.text)
     if not ok:
         await update.message.reply_text(msg, reply_markup=SKIP_MENU)
         return ASK_PLACE
-    await update.message.reply_text(msg + "\n\nВыбери разбор:", reply_markup=MAIN_MENU)
-    return ConversationHandler.END
+    await update.message.reply_text(msg)
+    return await _finish_or_run(update, ctx)
 
 
 async def onb_skip(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text(
-        "Готово — данные сохранены. Время/место можно добавить позже в «Мои данные».\n"
-        "Выбери разбор:",
-        reply_markup=MAIN_MENU,
-    )
+    if not ctx.user_data.get("pending_label"):
+        await update.message.reply_text(
+            "Готово — данные сохранены. Время/место можно добавить позже в «Мои данные».\n"
+            "Выбери разбор:",
+            reply_markup=MAIN_MENU,
+        )
+        return ConversationHandler.END
+    await update.message.reply_text("Ок, считаю по числам и арканам.")
+    return await _finish_or_run(update, ctx)
+
+
+async def _finish_or_run(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """После сбора данных: либо запускаем отложенный разбор, либо просто показываем меню."""
+    label = ctx.user_data.pop("pending_label", None)
+    if not label:
+        await update.message.reply_text("Выбери разбор:", reply_markup=MAIN_MENU)
+        return ConversationHandler.END
+    user = await asyncio.to_thread(database.get_user, update.effective_user.id)
+    await _do_analysis(update, label, user)
     return ConversationHandler.END
 
 
 # ---------- разбор одним тапом ----------
-async def run_analysis(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+async def analysis_entry(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """Тап по разбору. Если нет времени/места — сначала предлагаем их дать."""
     label = update.message.text
-    atype, request = _ANALYSIS[label]
-
     user = await asyncio.to_thread(database.get_user, update.effective_user.id)
     if not user or not user.get("birth_date"):
         await update.message.reply_text("Сначала сохраним данные — нажми /start.")
-        return
+        return ConversationHandler.END
 
-    await update.message.reply_text(f"{label}: считаю и собираю портрет…")
+    has_time = bool(user.get("birth_time"))
+    has_place = bool(user.get("timezone") and user.get("lat") is not None)
+    if has_time and has_place:
+        await _do_analysis(update, label, user)
+        return ConversationHandler.END
+
+    # данных не хватает — задаём вопросы, разбор запустим сразу после
+    ctx.user_data["pending_label"] = label
+    if not has_time:
+        await update.message.reply_text(
+            "🛰️ Чтобы подключить спутники (астрология, джйотиш, Ба Цзы) и сделать разбор "
+            "глубже — пришли время рождения ЧЧ:ММ (например, 14:30).\n\n"
+            "Или «Пропустить» — посчитаю по числам и арканам.",
+            reply_markup=SKIP_MENU,
+        )
+        return ASK_TIME
+    await update.message.reply_text(
+        "🛰️ Остался город рождения (например: Москва) — и спутники подключатся.\n\n"
+        "Или «Пропустить».",
+        reply_markup=SKIP_MENU,
+    )
+    return ASK_PLACE
+
+
+async def _do_analysis(update: Update, label: str, user: dict) -> None:
+    """Считает профиль с живыми статусами ожидания и присылает отчёт."""
+    atype, request = _ANALYSIS[label]
+    has_astro = bool(user.get("birth_time") and user.get("timezone"))
+    stages = _STAGES_ASTRO if has_astro else _STAGES_BASIC
 
     req = ProfileRequest(
         name=user.get("name", ""),
@@ -165,11 +223,25 @@ async def run_analysis(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         main_request=request,
         analysis_type=atype,
     )
+
+    status = await update.message.reply_text(f"{label}\n{stages[0]}")
+    task = asyncio.create_task(asyncio.to_thread(build_profile, req))
+    idx = 0
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=2.4)
+        if task in done:
+            break
+        idx += 1
+        try:
+            await status.edit_text(f"{label}\n{stages[idx % len(stages)]}")
+        except Exception:  # noqa: BLE001 — «message is not modified» и т.п. не важны
+            pass
+
     try:
-        profile = await asyncio.to_thread(build_profile, req)
+        profile = task.result()
     except Exception as e:  # noqa: BLE001
         logging.exception("build_profile failed")
-        await update.message.reply_text(f"Не получилось собрать разбор: {type(e).__name__}: {e}")
+        await status.edit_text(f"Не получилось собрать разбор: {type(e).__name__}: {e}")
         return
 
     try:
@@ -179,8 +251,12 @@ async def run_analysis(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:  # noqa: BLE001
         logging.exception("save_profile failed")
 
+    try:
+        await status.edit_text(f"{label}: готово ✅")
+    except Exception:  # noqa: BLE001
+        pass
     await _send_long(update, profile.report["full_report"])
-    await update.message.reply_text("Готово. Выбери следующий разбор:", reply_markup=MAIN_MENU)
+    await update.message.reply_text("Выбери следующий разбор:", reply_markup=MAIN_MENU)
 
 
 # ---------- мои данные ----------
@@ -251,6 +327,7 @@ async def edit_place_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> in
 
 
 async def edit_place_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("📍 Ищу город на карте…")
     ok, msg = await _save_place(update.effective_user.id, update.message.text)
     if not ok:
         await update.message.reply_text(msg)
@@ -264,6 +341,7 @@ async def back_to_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ctx.user_data.pop("pending_label", None)
     await update.message.reply_text("Отменено.", reply_markup=MAIN_MENU)
     return ConversationHandler.END
 
@@ -300,7 +378,7 @@ async def _save_place(telegram_id: int, raw: str) -> tuple[bool, str]:
     )
     return True, (
         f"Место сохранено: {geo.get('display_name', place)}\n"
-        f"Таймзона: {geo['timezone']}. Астро-модули подключены ✅"
+        f"Таймзона: {geo['timezone']}. Спутники подключены 🛰️✅"
     )
 
 
@@ -324,6 +402,7 @@ def build_application() -> Application:
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", cmd_start),
+            MessageHandler(filters.Regex(f"^({BTN_PERSON}|{BTN_PERIOD}|{BTN_WORK})$"), analysis_entry),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_NAME}$"), edit_name_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_DATE}$"), edit_date_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_TIME}$"), edit_time_start),
@@ -343,7 +422,6 @@ def build_application() -> Application:
     )
     app.add_handler(conv)
 
-    app.add_handler(MessageHandler(filters.Regex(f"^({BTN_PERSON}|{BTN_PERIOD}|{BTN_WORK})$"), run_analysis))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DATA}$"), show_data))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BACK}$"), back_to_menu))
     return app
