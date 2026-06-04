@@ -127,6 +127,18 @@ def delete_partner(partner_id: str) -> None:
     supabase.table("me_partners").delete().eq("partner_id", partner_id).execute()
 
 
+def set_cover(profile_id: str, url: str) -> None:
+    """Запомнить URL AI-обложки в data профиля (чтобы не платить Replicate повторно)."""
+    if supabase is None:
+        return
+    res = supabase.table("me_profiles").select("data").eq("profile_id", profile_id).limit(1).execute()
+    if not res.data:
+        return
+    data = res.data[0]["data"] or {}
+    data["cover_url"] = url
+    supabase.table("me_profiles").update({"data": data}).eq("profile_id", profile_id).execute()
+
+
 def add_feedback(profile_id: str, text: str, rating: Optional[int] = None) -> None:
     if supabase is None:
         return

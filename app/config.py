@@ -13,6 +13,10 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")  # service_role (серверный
 # --- Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
+# --- Генерация AI-обложек (Replicate, опционально) ---
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", "black-forest-labs/flux-schnell")
+
 # --- Прочее ---
 REPORT_STYLE = os.getenv("REPORT_STYLE", "мягкий, на «ты», практичный")
 DIAG_TOKEN = os.getenv("DIAG_TOKEN", "")  # для /_diag без логов Railway
@@ -21,6 +25,10 @@ METHOD_VERSION = "v0.1"
 
 def ai_ready() -> bool:
     return bool(OPENROUTER_API_KEY)
+
+
+def image_ready() -> bool:
+    return bool(REPLICATE_API_TOKEN)
 
 
 def db_ready() -> bool:

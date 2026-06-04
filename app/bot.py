@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import re
 from datetime import date
@@ -30,9 +31,9 @@ from telegram.ext import (
     filters,
 )
 
-from . import database
+from . import database, imagegen, viz
 from .calc import ephemeris
-from .engine import build_profile
+from .engine import build_profile, build_synastry
 from .models import AnalysisType, ProfileRequest
 
 # --- состояния онбординга/редактирования/добавления партнёра ---
@@ -358,6 +359,10 @@ def _sections_keyboard(pid: str, sections: list[tuple[str, str]], atype_val: str
             row = []
     if row:
         rows.append(row)
+    rows.append([
+        InlineKeyboardButton("🗺 Карта", callback_data=f"img:{pid}"),
+        InlineKeyboardButton("🎨 Обложка", callback_data=f"cov:{pid}"),
+    ])
     rows.append([InlineKeyboardButton("🔄 Сделать заново", callback_data=f"r:{atype_val}")])
     return InlineKeyboardMarkup(rows)
 
@@ -403,6 +408,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await _do_analysis(q.message, q.from_user.id, label, user, force=True)
         else:
             await q.message.reply_text("Нет данных для пересчёта — нажми /start.")
+    elif data.startswith("img:"):  # детерминированная карта-визуал
+        pid = data.split(":", 1)[1]
+        await _send_chart(q.message, pid)
+    elif data.startswith("cov:"):  # AI-обложка через Replicate
+        pid = data.split(":", 1)[1]
+        await _send_cover(q.message, pid)
     elif data.startswith("pd:"):  # удалить партнёра
         pid = data.split(":", 1)[1]
         await asyncio.to_thread(database.delete_partner, pid)
@@ -414,6 +425,55 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 _LABEL_BY_TYPE = {atype.value: label for label, (atype, _req) in _ANALYSIS.items()}
+
+
+# ---------- визуалы: детерминированная карта + AI-обложка ----------
+async def _send_chart(msg, profile_id: str) -> None:
+    """Нарисовать карту из посчитанных полей профиля и прислать картинкой."""
+    profile = await asyncio.to_thread(database.get_profile, profile_id)
+    if not profile:
+        await msg.reply_text("Этот разбор уже устарел — сделай новый из меню.")
+        return
+    note = await msg.reply_text("🗺 Рисую карту по твоим расчётным полям…")
+    try:
+        png = await asyncio.to_thread(viz.render_chart, profile)
+    except Exception as e:  # noqa: BLE001
+        logging.exception("render_chart failed")
+        await note.edit_text(f"Не получилось нарисовать карту: {type(e).__name__}")
+        return
+    bio = io.BytesIO(png)
+    bio.name = "chart.png"
+    await msg.reply_photo(bio, caption="Карта по твоим расчётным полям 🗺")
+    try:
+        await note.delete()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _send_cover(msg, profile_id: str) -> None:
+    """AI-обложка через Replicate. Кэшируем URL в профиле, чтобы не платить дважды."""
+    profile = await asyncio.to_thread(database.get_profile, profile_id)
+    if not profile:
+        await msg.reply_text("Этот разбор уже устарел — сделай новый из меню.")
+        return
+    cached = profile.get("cover_url")
+    if cached:
+        await msg.reply_photo(cached, caption="Обложка по твоему расчётному профилю 🎨")
+        return
+    note = await msg.reply_text("🎨 Генерирую обложку (до минуты)…")
+    url, caption = await asyncio.to_thread(imagegen.cover, profile)
+    if not url:
+        await note.edit_text(caption)
+        return
+    try:
+        await asyncio.to_thread(database.set_cover, profile_id, url)
+    except Exception:  # noqa: BLE001
+        logging.exception("set_cover failed")
+    await msg.reply_photo(url, caption=caption)
+    try:
+        await note.delete()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ---------- совместимость (синастрия) ----------
