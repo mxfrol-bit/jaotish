@@ -1,7 +1,9 @@
 """Telegram-бот Matrix Engine. Живёт в одном процессе с FastAPI.
 
-Бот запоминает данные пользователя (имя + дата) в Supabase, показывает меню с кнопками
-и запускает любой разбор одним тапом — без повторного ввода.
+Бот запоминает данные пользователя (имя, дата, опц. время+место) в Supabase,
+показывает меню с кнопками и запускает любой разбор одним тапом — без повторного ввода.
+Время и место рождения опциональны: без них работают числа и арканы,
+с ними разблокируются астрология, джйотиш и Ба Цзы.
 """
 from __future__ import annotations
 
@@ -20,11 +22,21 @@ from telegram.ext import (
 )
 
 from . import database
+from .calc import ephemeris
 from .engine import build_profile
 from .models import AnalysisType, ProfileRequest
 
 # --- состояния онбординга/редактирования ---
-ASK_NAME, ASK_BIRTHDATE, EDIT_NAME, EDIT_BIRTHDATE = range(4)
+(
+    ASK_NAME,
+    ASK_BIRTHDATE,
+    ASK_TIME,
+    ASK_PLACE,
+    EDIT_NAME,
+    EDIT_BIRTHDATE,
+    EDIT_TIME,
+    EDIT_PLACE,
+) = range(8)
 
 # --- кнопки меню ---
 BTN_PERSON = "🧬 Личность"
@@ -33,7 +45,10 @@ BTN_WORK = "💼 Работа и деньги"
 BTN_DATA = "👤 Мои данные"
 BTN_EDIT_NAME = "✏️ Изменить имя"
 BTN_EDIT_DATE = "✏️ Изменить дату"
+BTN_EDIT_TIME = "🕐 Время рождения"
+BTN_EDIT_PLACE = "📍 Место рождения"
 BTN_BACK = "⬅️ В меню"
+BTN_SKIP = "⏭️ Пропустить"
 
 _ANALYSIS = {
     BTN_PERSON: (AnalysisType.personality, "Разбор личности"),
@@ -45,7 +60,16 @@ MAIN_MENU = ReplyKeyboardMarkup(
     [[BTN_PERSON, BTN_PERIOD], [BTN_WORK, BTN_DATA]], resize_keyboard=True
 )
 DATA_MENU = ReplyKeyboardMarkup(
-    [[BTN_EDIT_NAME, BTN_EDIT_DATE], [BTN_BACK]], resize_keyboard=True
+    [[BTN_EDIT_NAME, BTN_EDIT_DATE], [BTN_EDIT_TIME, BTN_EDIT_PLACE], [BTN_BACK]],
+    resize_keyboard=True,
+)
+SKIP_MENU = ReplyKeyboardMarkup([[BTN_SKIP]], resize_keyboard=True)
+
+_ASTRO_PITCH = (
+    "Хочешь разблокировать астрологию, джйотиш и Ба Цзы? Для них нужны "
+    "точное время и город рождения.\n\n"
+    "Пришли время рождения в формате ЧЧ:ММ (например, 14:30) "
+    "или нажми «Пропустить» — числа и арканы работают и без этого."
 )
 
 
@@ -84,8 +108,33 @@ async def onb_birthdate(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         update.effective_user.id,
         {"name": ctx.user_data["name"], "birth_date": bd.isoformat()},
     )
+    await update.message.reply_text(_ASTRO_PITCH, reply_markup=SKIP_MENU)
+    return ASK_TIME
+
+
+async def onb_time(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    if not _save_time(update.effective_user.id, update.message.text):
+        await update.message.reply_text("Нужен формат ЧЧ:ММ, например 09:05. Или «Пропустить».")
+        return ASK_TIME
     await update.message.reply_text(
-        f"Готово, {ctx.user_data['name']}. Данные сохранены — больше вводить не нужно.\n"
+        "Принято. Теперь город рождения (например: Москва) — или «Пропустить».",
+        reply_markup=SKIP_MENU,
+    )
+    return ASK_PLACE
+
+
+async def onb_place(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ok, msg = await _save_place(update.effective_user.id, update.message.text)
+    if not ok:
+        await update.message.reply_text(msg, reply_markup=SKIP_MENU)
+        return ASK_PLACE
+    await update.message.reply_text(msg + "\n\nВыбери разбор:", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
+
+
+async def onb_skip(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "Готово — данные сохранены. Время/место можно добавить позже в «Мои данные».\n"
         "Выбери разбор:",
         reply_markup=MAIN_MENU,
     )
@@ -108,6 +157,11 @@ async def run_analysis(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         name=user.get("name", ""),
         gender=user.get("gender", "") or "",
         birth_date=date.fromisoformat(user["birth_date"]),
+        birth_time=user.get("birth_time"),
+        birth_place=user.get("birth_place"),
+        lat=user.get("lat"),
+        lon=user.get("lon"),
+        timezone=user.get("timezone"),
         main_request=request,
         analysis_type=atype,
     )
@@ -135,8 +189,14 @@ async def show_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not user:
         await update.message.reply_text("Данных пока нет — нажми /start.")
         return
+    astro = "✅ подключены" if (user.get("birth_time") and user.get("timezone")) else "⛔ нужны время и место"
     await update.message.reply_text(
-        f"Твои данные:\n• Имя: {user.get('name') or '—'}\n• Дата рождения: {user.get('birth_date') or '—'}",
+        "Твои данные:\n"
+        f"• Имя: {user.get('name') or '—'}\n"
+        f"• Дата рождения: {user.get('birth_date') or '—'}\n"
+        f"• Время рождения: {user.get('birth_time') or '—'}\n"
+        f"• Место рождения: {user.get('birth_place') or '—'}\n"
+        f"• Астро-модули: {astro}",
         reply_markup=DATA_MENU,
     )
 
@@ -172,6 +232,33 @@ async def edit_date_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def edit_time_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Новое время рождения (ЧЧ:ММ):")
+    return EDIT_TIME
+
+
+async def edit_time_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    if not _save_time(update.effective_user.id, update.message.text):
+        await update.message.reply_text("Нужен формат ЧЧ:ММ, например 09:05.")
+        return EDIT_TIME
+    await update.message.reply_text("Время обновлено.", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
+
+
+async def edit_place_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Новый город рождения (например: Москва):")
+    return EDIT_PLACE
+
+
+async def edit_place_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ok, msg = await _save_place(update.effective_user.id, update.message.text)
+    if not ok:
+        await update.message.reply_text(msg)
+        return EDIT_PLACE
+    await update.message.reply_text(msg, reply_markup=MAIN_MENU)
+    return ConversationHandler.END
+
+
 async def back_to_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Меню:", reply_markup=MAIN_MENU)
 
@@ -179,6 +266,42 @@ async def back_to_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Отменено.", reply_markup=MAIN_MENU)
     return ConversationHandler.END
+
+
+# ---------- общие сохранялки времени/места ----------
+def _save_time(telegram_id: int, raw: str) -> bool:
+    """Валидировать ЧЧ:ММ и сохранить. False — формат неверный."""
+    txt = raw.strip()
+    try:
+        hh, mm = (int(x) for x in txt.split(":")[:2])
+    except (ValueError, IndexError):
+        return False
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        return False
+    database.upsert_user(telegram_id, {"birth_time": f"{hh:02d}:{mm:02d}"})
+    return True
+
+
+async def _save_place(telegram_id: int, raw: str) -> tuple[bool, str]:
+    """Геокодировать город → координаты+таймзона и сохранить. Возвращает (ok, текст)."""
+    place = raw.strip()
+    geo = await asyncio.to_thread(ephemeris.resolve_geo, place)
+    if geo is None:
+        return False, "Не нашёл такой город. Попробуй иначе (например: «Москва, Россия») или «Пропустить»."
+    await asyncio.to_thread(
+        database.upsert_user,
+        telegram_id,
+        {
+            "birth_place": place,
+            "lat": geo["lat"],
+            "lon": geo["lon"],
+            "timezone": geo["timezone"],
+        },
+    )
+    return True, (
+        f"Место сохранено: {geo.get('display_name', place)}\n"
+        f"Таймзона: {geo['timezone']}. Астро-модули подключены ✅"
+    )
 
 
 async def _send_long(update: Update, text: str) -> None:
@@ -197,17 +320,24 @@ async def _send_long(update: Update, text: str) -> None:
 def build_application() -> Application:
     app = Application.builder().token(_token()).build()
 
+    skip = MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), onb_skip)
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", cmd_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_NAME}$"), edit_name_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_DATE}$"), edit_date_start),
+            MessageHandler(filters.Regex(f"^{BTN_EDIT_TIME}$"), edit_time_start),
+            MessageHandler(filters.Regex(f"^{BTN_EDIT_PLACE}$"), edit_place_start),
         ],
         states={
             ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, onb_name)],
             ASK_BIRTHDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, onb_birthdate)],
+            ASK_TIME: [skip, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_time)],
+            ASK_PLACE: [skip, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_place)],
             EDIT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_name_save)],
             EDIT_BIRTHDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_date_save)],
+            EDIT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_time_save)],
+            EDIT_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_place_save)],
         },
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
     )

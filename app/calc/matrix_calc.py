@@ -130,15 +130,23 @@ def arcana_22(birth: date, today: Optional[date] = None) -> dict:
     }
 
 
-def compute_all(birth: date, name: str = "", today: Optional[date] = None) -> dict:
-    """Все рассчитываемые в v0.1 модули. Остальные — статус not_connected."""
+def compute_all(
+    birth: date,
+    name: str = "",
+    today: Optional[date] = None,
+    birth_time: Optional[str] = None,
+    geo: Optional[dict] = None,
+) -> dict:
+    """Все модули. Астро-модули считаются при наличии времени+места, иначе insufficient_input."""
     today = today or date.today()
+    from . import astrology
+
     return {
         "numerology": numerology(birth, name, today),
         "arcana_22": arcana_22(birth, today),
-        "western_astrology": {"calculation_status": "calculation_module_not_connected"},
-        "jyotish": {"calculation_status": "calculation_module_not_connected"},
-        "bazi": {"calculation_status": "calculation_module_not_connected"},
+        "western_astrology": astrology.western(birth, birth_time, geo),
+        "jyotish": astrology.jyotish(birth, birth_time, geo, today),
+        "bazi": astrology.bazi(birth, birth_time, geo),
         "archetypes": {"primary": "", "secondary": "", "shadow": "", "growth_path": ""},
         "psychology_optional": {"enabled": False},
     }

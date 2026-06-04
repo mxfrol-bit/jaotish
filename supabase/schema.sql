@@ -22,6 +22,11 @@ create table if not exists me_users (
     name         text,
     birth_date   date,
     gender       text,
+    birth_time   text,              -- ЧЧ:ММ (для астро-модулей)
+    birth_place  text,              -- город рождения (для геокодинга)
+    lat          double precision,  -- предрассчитанные координаты
+    lon          double precision,
+    timezone     text,              -- IANA-таймзона места рождения
     updated_at   timestamptz not null default now()
 );
 

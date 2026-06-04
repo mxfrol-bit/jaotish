@@ -40,6 +40,10 @@ class ProfileRequest(BaseModel):
     birth_date: date
     birth_time: Optional[str] = None
     birth_place: Optional[str] = None
+    # Предрассчитанные координаты/таймзона (бот хранит их, чтобы не геокодить каждый раз).
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    timezone: Optional[str] = None
     main_request: str = ""
     analysis_type: AnalysisType = AnalysisType.personality
 
