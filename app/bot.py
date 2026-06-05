@@ -31,7 +31,7 @@ from telegram.ext import (
     filters,
 )
 
-from . import database, imagegen, viz
+from . import database, imagegen, tts, viz
 from .calc import ephemeris
 from .engine import build_event, build_profile, build_synastry
 from .models import AnalysisType, ProfileRequest
@@ -372,7 +372,10 @@ def _sections_keyboard(pid: str, sections: list[tuple[str, str]], atype_val: str
     rows.append([
         InlineKeyboardButton("🗺 Карта", callback_data=f"img:{pid}"),
         InlineKeyboardButton("🎨 Обложка", callback_data=f"cov:{pid}"),
+    ])
+    rows.append([
         InlineKeyboardButton("🔬 Методы", callback_data=f"tech:{pid}"),
+        InlineKeyboardButton("🔊 Озвучить", callback_data=f"tts:{pid}"),
     ])
     rows.append([InlineKeyboardButton("🔄 Сделать заново", callback_data=f"r:{atype_val}")])
     return InlineKeyboardMarkup(rows)
@@ -436,6 +439,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 "временной и восточный слои). Обычно это спрятано за «языком Матрицы»."
             )
             await _send_long(q.message, tech)
+    elif data.startswith("tts:"):  # озвучка разбора
+        pid = data.split(":", 1)[1]
+        await _send_voice(q.message, pid, q.from_user.id)
     elif data.startswith("img:"):  # детерминированная карта-визуал
         pid = data.split(":", 1)[1]
         await _send_chart(q.message, pid)
@@ -456,6 +462,36 @@ _LABEL_BY_TYPE = {atype.value: label for label, (atype, _req) in _ANALYSIS.items
 
 
 # ---------- визуалы: детерминированная карта + AI-обложка ----------
+async def _send_voice(msg, profile_id: str, telegram_id: int) -> None:
+    """Озвучить разбор (Edge-TTS) и прислать аудио-файлом."""
+    profile = await asyncio.to_thread(database.get_profile, profile_id)
+    full = ((profile or {}).get("report") or {}).get("full_report") if profile else None
+    if not full:
+        await msg.reply_text("Этот разбор уже устарел — сделай новый из меню.")
+        return
+    note = await msg.reply_text("🔊 Озвучиваю разбор (несколько секунд)…")
+    try:
+        audio = await tts.synth(full)
+    except Exception as e:  # noqa: BLE001
+        logging.exception("tts.synth failed")
+        await asyncio.to_thread(
+            database.log_error, "exception", "tts", f"{type(e).__name__}: {e}", None, telegram_id
+        )
+        await note.edit_text("Не получилось озвучить — попробуй ещё раз.")
+        return
+    if not audio:
+        await note.edit_text("Нечего озвучивать.")
+        return
+    bio = io.BytesIO(audio)
+    bio.name = "razbor.mp3"
+    await msg.reply_audio(bio, title="Разбор", performer="Матрица",
+                          caption="Озвучка разбора 🔊")
+    try:
+        await note.delete()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _send_chart(msg, profile_id: str) -> None:
     """Нарисовать карту из посчитанных полей профиля и прислать картинкой."""
     profile = await asyncio.to_thread(database.get_profile, profile_id)

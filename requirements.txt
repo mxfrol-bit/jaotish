@@ -9,3 +9,4 @@ pyswisseph==2.10.3.2
 timezonefinder==8.2.0
 tzdata==2026.2
 matplotlib==3.9.4
+edge-tts==7.2.8
