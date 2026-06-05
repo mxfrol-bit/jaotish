@@ -281,6 +281,10 @@ async def _do_analysis(msg, telegram_id: int, label: str, user: dict, force: boo
         profile = task.result()
     except Exception as e:  # noqa: BLE001
         logging.exception("build_profile failed")
+        await asyncio.to_thread(
+            database.log_error, "exception", "build_profile",
+            f"{type(e).__name__}: {e}", {"label": label}, telegram_id,
+        )
         await status.edit_text(f"Не получилось собрать разбор: {type(e).__name__}: {e}")
         return
 
@@ -368,6 +372,7 @@ def _sections_keyboard(pid: str, sections: list[tuple[str, str]], atype_val: str
     rows.append([
         InlineKeyboardButton("🗺 Карта", callback_data=f"img:{pid}"),
         InlineKeyboardButton("🎨 Обложка", callback_data=f"cov:{pid}"),
+        InlineKeyboardButton("🔬 Методы", callback_data=f"tech:{pid}"),
     ])
     rows.append([InlineKeyboardButton("🔄 Сделать заново", callback_data=f"r:{atype_val}")])
     return InlineKeyboardMarkup(rows)
@@ -419,6 +424,18 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await _do_analysis(q.message, q.from_user.id, label, user, force=True)
         else:
             await q.message.reply_text("Нет данных для пересчёта — нажми /start.")
+    elif data.startswith("tech:"):  # «Подробные методы» — раскрытие источников по запросу
+        pid = data.split(":", 1)[1]
+        profile = await asyncio.to_thread(database.get_profile, pid)
+        tech = ((profile or {}).get("report") or {}).get("tech_methods") if profile else None
+        if not tech:
+            await q.message.reply_text("Технический слой для этого разбора недоступен.")
+        else:
+            await q.message.reply_text(
+                "🔬 Подробные методы — на чём собран разбор (числовой, архетипический, "
+                "временной и восточный слои). Обычно это спрятано за «языком Матрицы»."
+            )
+            await _send_long(q.message, tech)
     elif data.startswith("img:"):  # детерминированная карта-визуал
         pid = data.split(":", 1)[1]
         await _send_chart(q.message, pid)
@@ -557,6 +574,10 @@ async def _do_synastry(msg, telegram_id: int, partner_id: str) -> None:
         profile = task.result()
     except Exception as e:  # noqa: BLE001
         logging.exception("build_synastry failed")
+        await asyncio.to_thread(
+            database.log_error, "exception", "build_synastry",
+            f"{type(e).__name__}: {e}", {"partner_id": partner_id}, telegram_id,
+        )
         await status.edit_text(f"Не получилось собрать совместимость: {type(e).__name__}: {e}")
         return
 
@@ -643,6 +664,10 @@ async def _do_event(msg, telegram_id: int, user: dict, ev_date: date, desc: str)
         profile = task.result()
     except Exception as e:  # noqa: BLE001
         logging.exception("build_event failed")
+        await asyncio.to_thread(
+            database.log_error, "exception", "build_event",
+            f"{type(e).__name__}: {e}", {"event_date": ev_date.isoformat(), "desc": desc}, telegram_id,
+        )
         await status.edit_text(f"Не получилось собрать разбор события: {type(e).__name__}: {e}")
         return
 
@@ -908,8 +933,21 @@ async def _send_long(msg, text: str, reply_markup=None) -> None:
         text = text[cut:].lstrip("\n")
 
 
+async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Глобальный перехват ошибок бота: пишем в лог багов (видно в админке)."""
+    logging.exception("PTB handler error", exc_info=ctx.error)
+    tid = None
+    if isinstance(update, Update) and update.effective_user:
+        tid = update.effective_user.id
+    await asyncio.to_thread(
+        database.log_error, "exception", "ptb_handler",
+        f"{type(ctx.error).__name__}: {ctx.error}", None, tid,
+    )
+
+
 def build_application() -> Application:
     app = Application.builder().token(_token()).build()
+    app.add_error_handler(on_error)
 
     skip = MessageHandler(filters.Regex(_SKIP_RE), onb_skip)
     common_fallbacks = [

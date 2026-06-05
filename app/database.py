@@ -139,6 +139,60 @@ def set_cover(profile_id: str, url: str) -> None:
     supabase.table("me_profiles").update({"data": data}).eq("profile_id", profile_id).execute()
 
 
+def log_error(
+    kind: str,
+    where: str = "",
+    message: str = "",
+    context: Optional[dict[str, Any]] = None,
+    telegram_id: Optional[int] = None,
+) -> None:
+    """Записать баг/ошибку в me_errors. Никогда не падает сам (иначе скроет первичную ошибку)."""
+    if supabase is None:
+        return
+    try:
+        supabase.table("me_errors").insert(
+            {
+                "kind": kind,
+                "where_": where[:200] if where else None,
+                "message": (message or "")[:2000],
+                "context": context,
+                "telegram_id": telegram_id,
+            }
+        ).execute()
+    except Exception:  # noqa: BLE001 — логирование ошибки не должно ронять основной поток
+        import logging
+
+        logging.exception("log_error failed")
+
+
+def list_errors(limit: int = 100, only_unresolved: bool = False) -> list[dict[str, Any]]:
+    if supabase is None:
+        return []
+    q = supabase.table("me_errors").select("*")
+    if only_unresolved:
+        q = q.eq("resolved", False)
+    res = q.order("created_at", desc=True).limit(limit).execute()
+    return res.data or []
+
+
+def resolve_error(error_id: int) -> None:
+    if supabase is None:
+        return
+    supabase.table("me_errors").update({"resolved": True}).eq("id", error_id).execute()
+
+
+def error_stats() -> dict[str, int]:
+    """Сводка для админки: всего и по типам (по последним записям)."""
+    rows = list_errors(limit=500)
+    stats: dict[str, int] = {"total": len(rows), "unresolved": 0}
+    for r in rows:
+        if not r.get("resolved"):
+            stats["unresolved"] += 1
+        k = r.get("kind") or "unknown"
+        stats[k] = stats.get(k, 0) + 1
+    return stats
+
+
 def add_feedback(profile_id: str, text: str, rating: Optional[int] = None) -> None:
     if supabase is None:
         return

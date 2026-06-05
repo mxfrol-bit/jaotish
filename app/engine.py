@@ -195,9 +195,6 @@ def build_synastry(
         syn,
     )
 
-    header = _synastry_header(syn, user_req.name, partner_req.name)
-    full_report = header + "\n---\n\n" + ai["full_report"]
-
     return Profile(
         profile_id=str(uuid.uuid4()),
         user_input=user_input,
@@ -206,8 +203,9 @@ def build_synastry(
         synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
         report={
             "short_summary": ai["short_summary"],
-            "full_report": full_report,
+            "full_report": ai["full_report"],
             "action_plan": ai.get("action_plan", ""),
+            "tech_methods": _synastry_header(syn, user_req.name, partner_req.name),
         },
         meta={
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -255,9 +253,6 @@ def build_event(
         user_input.model_dump(mode="json"), modules, event_date.isoformat(), event_desc
     )
 
-    header = _event_header(event_date, event_desc, modules.get("numerology", {})) + _calc_header(modules)
-    full_report = header + "\n---\n\n" + ai["full_report"]
-
     return Profile(
         profile_id=str(uuid.uuid4()),
         user_input=user_input,
@@ -266,8 +261,10 @@ def build_event(
         synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
         report={
             "short_summary": ai["short_summary"],
-            "full_report": full_report,
+            "full_report": ai["full_report"],
             "action_plan": ai.get("action_plan", ""),
+            "tech_methods": _event_header(event_date, event_desc, modules.get("numerology", {}))
+            + _calc_header(modules),
         },
         meta={
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -297,9 +294,8 @@ def build_profile(req: ProfileRequest, today: date | None = None) -> Profile:
 
     ai = synthesis.synthesize(user_input.model_dump(mode="json"), modules)
 
-    header = _calc_header(modules)
-    full_report = header + "\n---\n\n" + ai["full_report"]
-
+    # Сырой методологический слой (числа/арканы/планеты) в дефолтный отчёт НЕ кладём —
+    # язык Матрицы прячет методики. Кладём отдельно в tech_methods (раздел «Подробные методы»).
     return Profile(
         profile_id=str(uuid.uuid4()),
         user_input=user_input,
@@ -308,8 +304,9 @@ def build_profile(req: ProfileRequest, today: date | None = None) -> Profile:
         synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
         report={
             "short_summary": ai["short_summary"],
-            "full_report": full_report,
+            "full_report": ai["full_report"],
             "action_plan": ai.get("action_plan", ""),
+            "tech_methods": _calc_header(modules),
         },
         meta={
             "created_at": datetime.now(timezone.utc).isoformat(),

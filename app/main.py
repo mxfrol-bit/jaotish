@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import config
-from .routers import profiles
+from .routers import profiles, web
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("matrix-engine")
@@ -44,10 +44,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Matrix Engine", version=config.METHOD_VERSION, lifespan=lifespan)
 app.include_router(profiles.router)
+app.include_router(web.router)  # "/" (лендинг+форма), "/report", "/admin"
 
 
-@app.get("/")
-def root() -> dict:
+@app.get("/status")
+def status() -> dict:
     return {
         "service": "matrix-engine",
         "method_version": config.METHOD_VERSION,

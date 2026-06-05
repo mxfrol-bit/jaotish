@@ -55,8 +55,25 @@ create table if not exists me_feedback (
     created_at  timestamptz not null default now()
 );
 
+-- Лог багов/ошибок: всё, что пошло не так (AI-сбой, исключение, протечка жаргона),
+-- пишется сюда и выводится в админке.
+create table if not exists me_errors (
+    id           bigserial primary key,
+    kind         text not null,         -- ai_failure | exception | lang_leak | validation
+    where_       text,                  -- место в коде/боте (build_event, on_callback, …)
+    message      text,                  -- короткое человекочитаемое описание
+    context      jsonb,                 -- доп. данные (telegram_id, atype, термины-протечки…)
+    telegram_id  bigint,
+    resolved     boolean not null default false,
+    created_at   timestamptz not null default now()
+);
+
+create index if not exists me_errors_created_idx on me_errors (created_at desc);
+create index if not exists me_errors_kind_idx    on me_errors (kind);
+
 alter table me_profiles enable row level security;
 alter table me_feedback enable row level security;
 alter table me_users    enable row level security;
 alter table me_partners enable row level security;
+alter table me_errors   enable row level security;
 -- Политик нет: доступ только через service_role с бэкенда (он обходит RLS).
