@@ -187,34 +187,21 @@ def synthesize(user_input: dict[str, Any], modules: dict[str, Any]) -> dict[str,
         },
     ]
 
-    try:
-        resp = requests.post(
-            f"{config.OPENROUTER_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "X-Title": "Matrix Engine",
-            },
-            json={"model": config.OPENROUTER_MODEL, "messages": messages, "temperature": 0.7},
-            timeout=90,
-        )
-    except requests.RequestException as e:
-        return _error_report(filtered, f"сеть/таймаут OpenRouter: {e}")
-
-    if resp.status_code != 200:
-        return _error_report(filtered, f"OpenRouter {resp.status_code}: {resp.text[:400]}")
-
-    try:
-        full = resp.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError) as e:
-        return _error_report(filtered, f"неожиданный ответ OpenRouter: {e}; body={resp.text[:300]}")
+    ok, full = _post_openrouter(messages)
+    if not ok:
+        return _error_report(filtered, full)
 
     short = full.split("\n\n")[0][:600]
     return {"short_summary": short, "full_report": full, "action_plan": ""}
 
 
 def _post_openrouter(messages: list[dict]) -> tuple[bool, str]:
-    """Один вызов OpenRouter. Возвращает (ok, content) или (False, причина-ошибки)."""
+    """Вызов OpenRouter со СТРИМОМ. Возвращает (ok, content) или (False, причина).
+
+    Стрим важен для длинных отчётов: при медленной генерации в нестримовое тело
+    прилетают только keep-alive байты, и resp.json() видит пустоту
+    ('Expecting value: line N column 1'). Стрим собирает текст по дельтам — это надёжно.
+    """
     try:
         resp = requests.post(
             f"{config.OPENROUTER_BASE_URL}/chat/completions",
@@ -223,17 +210,50 @@ def _post_openrouter(messages: list[dict]) -> tuple[bool, str]:
                 "Content-Type": "application/json",
                 "X-Title": "Matrix Engine",
             },
-            json={"model": config.OPENROUTER_MODEL, "messages": messages, "temperature": 0.7},
-            timeout=90,
+            json={
+                "model": config.OPENROUTER_MODEL,
+                "messages": messages,
+                "temperature": 0.7,
+                "stream": True,
+            },
+            timeout=180,
+            stream=True,
         )
     except requests.RequestException as e:
         return False, f"сеть/таймаут OpenRouter: {e}"
     if resp.status_code != 200:
         return False, f"OpenRouter {resp.status_code}: {resp.text[:400]}"
+
+    parts: list[str] = []
+    err: str | None = None
     try:
-        return True, resp.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError) as e:
-        return False, f"неожиданный ответ OpenRouter: {e}; body={resp.text[:300]}"
+        for raw in resp.iter_lines(decode_unicode=True):
+            if not raw or not raw.startswith("data:"):
+                continue  # пустые строки и ': OPENROUTER PROCESSING' пропускаем
+            payload = raw[5:].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                obj = json.loads(payload)
+            except ValueError:
+                continue
+            if obj.get("error"):
+                err = str(obj["error"])[:300]
+                break
+            delta = (obj.get("choices") or [{}])[0].get("delta") or {}
+            piece = delta.get("content")
+            if piece:
+                parts.append(piece)
+    except requests.RequestException as e:
+        if not parts:
+            return False, f"обрыв стрима OpenRouter: {e}"
+    finally:
+        resp.close()
+
+    content = "".join(parts).strip()
+    if content:
+        return True, content
+    return False, err or "пустой ответ OpenRouter (стрим без контента)"
 
 
 def synthesize_synastry(
