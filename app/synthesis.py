@@ -147,6 +147,15 @@ USER_TEMPLATE = """Запрос пользователя: {main_request}
 """
 
 
+def _teaser(text: str) -> str:
+    """Короткий тизер: первый НЕ-заголовочный абзац (а не строка «## …»)."""
+    for para in (text or "").split("\n\n"):
+        p = para.strip()
+        if p and not p.startswith("#") and p != "---":
+            return p[:600]
+    return (text or "").strip()[:600]
+
+
 def _calculated_only(modules: dict[str, Any]) -> dict[str, Any]:
     """Оставляем только то, что реально посчитано — чтобы AI физически не мог опереться на пустое."""
     out: dict[str, Any] = {}
@@ -197,7 +206,7 @@ def synthesize(user_input: dict[str, Any], modules: dict[str, Any]) -> dict[str,
     if not ok:
         return _error_report(filtered, full)
 
-    short = full.split("\n\n")[0][:600]
+    short = _teaser(full)
     return {"short_summary": short, "full_report": full, "action_plan": ""}
 
 
@@ -363,7 +372,7 @@ def synthesize_synastry(
     ok, content = _generate(messages, where="synastry")
     if not ok:
         return _error_report({"synastry": synastry}, content)
-    short = content.split("\n\n")[0][:600]
+    short = _teaser(content)
     return {"short_summary": short, "full_report": content, "action_plan": ""}
 
 
@@ -398,7 +407,7 @@ def synthesize_event(
     ok, content = _generate(messages, where="event")
     if not ok:
         return _error_report(filtered, content)
-    short = content.split("\n\n")[0][:600]
+    short = _teaser(content)
     return {"short_summary": short, "full_report": content, "action_plan": ""}
 
 

@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import html
 import re
+import uuid
 from datetime import date
 
-from fastapi import APIRouter, Form, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Form, Query
 from fastapi.responses import HTMLResponse
 
 from .. import config, database
@@ -17,6 +18,9 @@ from ..engine import build_profile
 from ..models import AnalysisType, ProfileRequest
 
 router = APIRouter(tags=["web"])
+
+# Статусы фоновой генерации по pid: "error:<текст>" — если упало (иначе ждём появления в БД).
+_web_status: dict[str, str] = {}
 
 _ANALYSIS_LABELS = {
     "personality": "Личность — базовый код",
@@ -125,8 +129,21 @@ def landing() -> str:
     return _page("Матрица", body)
 
 
+def _build_and_save(pid: str, req: ProfileRequest, analysis_type: str) -> None:
+    """Считает разбор в фоне и сохраняет под заданным pid. Ошибку кладёт в _web_status."""
+    try:
+        profile = build_profile(req)
+        profile.profile_id = pid
+        database.save_profile(profile.model_dump(mode="json"))
+    except Exception as e:  # noqa: BLE001
+        _web_status[pid] = f"error:{type(e).__name__}: {e}"
+        database.log_error("exception", "web/report", f"{type(e).__name__}: {e}",
+                           {"analysis_type": analysis_type})
+
+
 @router.post("/report", response_class=HTMLResponse)
 def report(
+    background_tasks: BackgroundTasks,
     name: str = Form(""),
     birth_date: str = Form(...),
     birth_time: str = Form(""),
@@ -151,21 +168,53 @@ def report(
         main_request=_ANALYSIS_LABELS.get(analysis_type, ""),
         analysis_type=atype,
     )
-    try:
-        profile = build_profile(req)
-        data = profile.model_dump(mode="json")
-        database.save_profile(data)
-    except Exception as e:  # noqa: BLE001
-        database.log_error("exception", "web/report", f"{type(e).__name__}: {e}",
-                           {"analysis_type": analysis_type})
-        return _page("Ошибка", f"<h1>Не получилось собрать разбор</h1>"
-                     f"<p class=note>{html.escape(type(e).__name__)}</p>"
-                     "<a class=back href='/'>← назад</a>")
+    pid = uuid.uuid4().hex
+    # Считаем в фоне (это ~минута: геокод + расчёт + сборка текста), страница сразу отвечает.
+    background_tasks.add_task(_build_and_save, pid, req, analysis_type)
+    return _loading_page(pid, name)
 
+
+def _loading_page(pid: str, name: str) -> str:
+    body = f"""
+    <h1>Собираю твой код…</h1>
+    <p class=lead>Читаю слои и перевожу их на простой язык. Обычно это занимает
+    до минуты — страница обновится сама.</p>
+    <div class=spinner></div>
+    <p class=note>{html.escape(name or '')}</p>
+    """
+    extra = f"<meta http-equiv='refresh' content='4;url=/r/{pid}'>"
+    spin = ("<style>.spinner{width:34px;height:34px;border:3px solid #e5e7eb;"
+            "border-top-color:#111;border-radius:50%;margin:28px 0;"
+            "animation:sp 0.8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}</style>")
+    html_doc = _page("Собираю…", body).replace("</head>", extra + spin + "</head>")
+    return html_doc
+
+
+@router.get("/r/{pid}", response_class=HTMLResponse)
+def result(pid: str) -> str:
+    data = database.get_profile(pid)
+    if data is None:
+        # ещё считается или упало
+        st = _web_status.get(pid, "")
+        if st.startswith("error:"):
+            _web_status.pop(pid, None)
+            return _page("Ошибка", "<h1>Не получилось собрать разбор</h1>"
+                         f"<p class=note>{html.escape(st[6:][:160])}</p>"
+                         "<a class=back href='/'>← попробовать снова</a>")
+        body = ("<h1>Ещё собираю…</h1><p class=lead>Почти готово — страница обновится сама.</p>"
+                "<div class=spinner></div>")
+        spin = ("<style>.spinner{width:34px;height:34px;border:3px solid #e5e7eb;"
+                "border-top-color:#111;border-radius:50%;margin:28px 0;"
+                "animation:sp 0.8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}</style>")
+        return _page("Собираю…", body).replace(
+            "</head>", f"<meta http-equiv='refresh' content='4;url=/r/{pid}'>" + spin + "</head>")
+
+    ui = data.get("user_input") or {}
     rep = data.get("report") or {}
+    label = _ANALYSIS_LABELS.get(ui.get("analysis_type") or "", "")
     summary = html.escape((rep.get("short_summary") or "").strip())
     body_html = _md_to_html(rep.get("full_report") or "")
-    title = f"{html.escape(name or 'Профиль')} · {html.escape(_ANALYSIS_LABELS.get(analysis_type, ''))}"
+    title = f"{html.escape(ui.get('name') or 'Профиль')}" + (f" · {html.escape(label)}" if label else "")
     body = (
         f"<h1>{title}</h1>"
         + (f"<div class=summary>{summary}</div>" if summary else "")
