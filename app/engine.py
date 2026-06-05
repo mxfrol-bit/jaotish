@@ -218,6 +218,66 @@ def build_synastry(
     )
 
 
+def _event_header(event_date: date, event_desc: str, num: dict[str, Any]) -> str:
+    """Шапка разбора события: дата + числовая энергия именно этой даты."""
+    lines = [f"## Событие: {event_desc or 'без описания'}", "", f"**Дата:** {event_date.isoformat()}", ""]
+    if num.get("calculation_status") == "calculated":
+        lines += [
+            "**Числовая энергия даты:**",
+            f"- Личный день: **{num.get('personal_day')}**, личный месяц: **{num.get('personal_month')}**, "
+            f"личный год: **{num.get('personal_year')}**",
+            f"- Универсальный день: **{num.get('universal_day')}**",
+            "",
+        ]
+    return "\n".join(lines)
+
+
+def build_event(
+    req: ProfileRequest, event_date: date, event_desc: str, today: date | None = None
+) -> Profile:
+    """Разбор конкретной даты/сделки: снимок натала НА ЭТУ ДАТУ → AI-вердикт «стоит ли»."""
+    geo = _resolve_geo(req)
+    # today = event_date: транзиты, прогрессии, личный день считаются именно на дату события.
+    modules = matrix_calc.compute_all(req.birth_date, req.name, event_date, req.birth_time, geo, req.gender)
+
+    user_input = UserInput(
+        name=req.name,
+        gender=req.gender,
+        birth_date=req.birth_date,
+        birth_time=req.birth_time,
+        birth_place=req.birth_place,
+        event_date=event_date,
+        main_request=event_desc,
+        analysis_type=AnalysisType.event,
+    )
+
+    ai = synthesis.synthesize_event(
+        user_input.model_dump(mode="json"), modules, event_date.isoformat(), event_desc
+    )
+
+    header = _event_header(event_date, event_desc, modules.get("numerology", {})) + _calc_header(modules)
+    full_report = header + "\n---\n\n" + ai["full_report"]
+
+    return Profile(
+        profile_id=str(uuid.uuid4()),
+        user_input=user_input,
+        geo=geo or {"lat": None, "lon": None, "timezone": ""},
+        calculation_modules=modules,
+        synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
+        report={
+            "short_summary": ai["short_summary"],
+            "full_report": full_report,
+            "action_plan": ai.get("action_plan", ""),
+        },
+        meta={
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "method_version": config.METHOD_VERSION,
+            "event": {"date": event_date.isoformat(), "desc": event_desc},
+            "feedback": [],
+        },
+    )
+
+
 def build_profile(req: ProfileRequest, today: date | None = None) -> Profile:
     today = today or date.today()
     birth = req.birth_date

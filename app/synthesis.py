@@ -68,6 +68,42 @@ ANALYSIS_PLANS: dict[str, list[str]] = {
     ],
 }
 
+EVENT_PLAN = [
+    "Вердикт: стоит или нет",
+    "Что эта дата активирует у тебя",
+    "Аргументы ЗА",
+    "Аргументы ПРОТИВ",
+    "Главные риски этого дня",
+    "Как снизить риск, если идёшь",
+    "На что смотреть в людях и условиях сделки",
+    "Итог и рекомендация по таймингу",
+]
+
+EVENT_TEMPLATE = """Это разбор КОНКРЕТНОГО события/сделки на заданную дату (электив).
+Человек: {name}, дата рождения {birth_date}.
+Дата события: {event_date}.
+Суть события (своими словами от человека): {event_desc}
+
+РАССЧИТАННЫЙ СНИМОК НА ДАТУ СОБЫТИЯ (детерминированный код, JSON со статусами):
+здесь нумерология (личный день/месяц/год и универсальный день этой даты), арканы,
+а при наличии времени+места рождения — транзиты медленных планет к наталу и прогрессии
+ИМЕННО НА ЭТУ ДАТУ, джйотиш-дашаистема и Ба Цзы.
+{modules_json}
+
+Дай практичный разбор СТРОГО про эту дату и это событие — не превращай в общий портрет.
+Опирайся только на посчитанные поля. Если астрология не подключена (нет времени/места) —
+честно скажи и работай по числам даты (личный день/месяц/год, универсальный день).
+
+ВАЖНО про вердикт:
+- Дай ясную рекомендательную позицию: «скорее благоприятно» / «нейтрально, со страховкой» /
+  «лучше перенести» — но в вероятностной рамке, без гарантий.
+- Это НЕ финансовый и НЕ юридический совет; финальное решение и ответственность — за человеком.
+- Никаких предсказаний катастроф. Риск — это «на что заранее постелить соломку», а не приговор.
+
+Markdown, каждый раздел — заголовок уровня ## с точным названием:
+{sections}
+"""
+
 SYNASTRY_PLAN = [
     "Короткое резюме пары", "Что вас притягивает", "Сильные стороны союза",
     "Зоны притирки и конфликтов", "Как вы закрываете потребности друг друга",
@@ -230,6 +266,41 @@ def synthesize_synastry(
     ok, content = _post_openrouter(messages)
     if not ok:
         return _error_report({"synastry": synastry}, content)
+    short = content.split("\n\n")[0][:600]
+    return {"short_summary": short, "full_report": content, "action_plan": ""}
+
+
+def synthesize_event(
+    user_input: dict[str, Any], modules: dict[str, Any], event_date: str, event_desc: str
+) -> dict[str, str]:
+    """AI-вердикт по конкретной дате/сделке поверх снимка натала НА ЭТУ ДАТУ."""
+    filtered = _calculated_only(modules)
+    if not config.ai_ready():
+        return {
+            "short_summary": "AI-синтез не настроен (нет OPENROUTER_API_KEY).",
+            "full_report": "## Снимок на дату посчитан\nЧисла даты и транзиты выше корректны, "
+            "AI-вердикт соберётся при заданном OPENROUTER_API_KEY.\n\n"
+            "```json\n" + json.dumps(filtered, ensure_ascii=False, indent=2) + "\n```",
+            "action_plan": "",
+        }
+    sections = "\n".join(f"{i}. {t}" for i, t in enumerate(EVENT_PLAN, 1))
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT.format(style=config.REPORT_STYLE)},
+        {
+            "role": "user",
+            "content": EVENT_TEMPLATE.format(
+                name=user_input.get("name", ""),
+                birth_date=user_input.get("birth_date", ""),
+                event_date=event_date,
+                event_desc=event_desc or "не уточнено",
+                modules_json=json.dumps(filtered, ensure_ascii=False, indent=2),
+                sections=sections,
+            ),
+        },
+    ]
+    ok, content = _post_openrouter(messages)
+    if not ok:
+        return _error_report(filtered, content)
     short = content.split("\n\n")[0][:600]
     return {"short_summary": short, "full_report": content, "action_plan": ""}
 

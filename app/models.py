@@ -20,6 +20,7 @@ class AnalysisType(str, Enum):
     compatibility = "compatibility"
     work = "work"
     current_period = "current_period"
+    event = "event"  # конкретная дата/сделка: что она активирует + вердикт «стоит ли»
 
 
 class UserInput(BaseModel):
@@ -29,6 +30,7 @@ class UserInput(BaseModel):
     birth_time: Optional[str] = None
     birth_place: Optional[str] = None
     current_city: Optional[str] = None
+    event_date: Optional[date] = None  # дата события/сделки (для analysis_type=event)
     main_request: str = ""
     analysis_type: AnalysisType = AnalysisType.personality
 

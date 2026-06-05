@@ -33,7 +33,7 @@ from telegram.ext import (
 
 from . import database, imagegen, viz
 from .calc import ephemeris
-from .engine import build_profile, build_synastry
+from .engine import build_event, build_profile, build_synastry
 from .models import AnalysisType, ProfileRequest
 
 # --- состояния онбординга/редактирования/добавления партнёра ---
@@ -51,13 +51,16 @@ from .models import AnalysisType, ProfileRequest
     P_DATE,
     P_TIME,
     P_PLACE,
-) = range(13)
+    EV_DATE,
+    EV_DESC,
+) = range(15)
 
 # --- кнопки меню ---
 BTN_PERSON = "🧬 Личность"
 BTN_PERIOD = "🌗 Текущий период"
 BTN_WORK = "💼 Работа и деньги"
 BTN_COMPAT = "❤️ Совместимость"
+BTN_EVENT = "🤝 Сделка / Событие"
 BTN_DATA = "👤 Мои данные"
 BTN_EDIT_NAME = "✏️ Изменить имя"
 BTN_EDIT_DATE = "✏️ Изменить дату"
@@ -76,7 +79,8 @@ _ANALYSIS = {
 }
 
 MAIN_MENU = ReplyKeyboardMarkup(
-    [[BTN_PERSON, BTN_PERIOD], [BTN_WORK, BTN_COMPAT], [BTN_DATA]], resize_keyboard=True
+    [[BTN_PERSON, BTN_PERIOD], [BTN_WORK, BTN_COMPAT], [BTN_EVENT], [BTN_DATA]],
+    resize_keyboard=True,
 )
 DATA_MENU = ReplyKeyboardMarkup(
     [
@@ -406,6 +410,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await _send_long(q.message, sections[i][1], reply_markup=kb)
     elif data.startswith("r:"):
         atype_val = data.split(":", 1)[1]
+        if atype_val == AnalysisType.event.value:
+            await q.message.reply_text("Новую дату/сделку запусти заново через «🤝 Сделка / Событие».")
+            return
         label = _LABEL_BY_TYPE.get(atype_val)
         user = await asyncio.to_thread(database.get_user, q.from_user.id)
         if label and user and user.get("birth_date"):
@@ -558,6 +565,92 @@ async def _do_synastry(msg, telegram_id: int, partner_id: str) -> None:
         await asyncio.to_thread(database.save_profile, data, telegram_id)
     except Exception:  # noqa: BLE001
         logging.exception("save_profile (synastry) failed")
+    try:
+        await status.edit_text(f"{label}: готово ✅")
+    except Exception:  # noqa: BLE001
+        pass
+    await _present(msg, data)
+    await msg.reply_text("Выбери следующий разбор:", reply_markup=MAIN_MENU)
+
+
+# ---------- событие / сделка (электив на дату) ----------
+async def event_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    user = await asyncio.to_thread(database.get_user, update.effective_user.id)
+    if not user or not user.get("birth_date"):
+        await update.message.reply_text("Сначала сохрани свои данные — /start.")
+        return ConversationHandler.END
+    ctx.user_data.pop("ev_date", None)
+    await update.message.reply_text(
+        "📅 На какую дату смотрим? Пришли дату события/сделки в формате ГГГГ-ММ-ДД "
+        "(например, 2026-07-15)."
+    )
+    return EV_DATE
+
+
+async def event_date_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        ev = date.fromisoformat(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("Нужен формат ГГГГ-ММ-ДД, например 2026-07-15.")
+        return EV_DATE
+    ctx.user_data["ev_date"] = ev.isoformat()
+    await update.message.reply_text(
+        "Коротко опиши, что за событие: «подписание сделки по аренде», «запуск продукта», "
+        "«переговоры о займе», «свадьба»… Чем конкретнее — тем точнее вердикт."
+    )
+    return EV_DESC
+
+
+async def event_desc_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ev_iso = ctx.user_data.pop("ev_date", None)
+    if not ev_iso:
+        await update.message.reply_text("Сбой — начни заново через «🤝 Сделка / Событие».", reply_markup=MAIN_MENU)
+        return ConversationHandler.END
+    desc = update.message.text.strip()
+    user = await asyncio.to_thread(database.get_user, update.effective_user.id)
+    await _do_event(update.message, update.effective_user.id, user, date.fromisoformat(ev_iso), desc)
+    return ConversationHandler.END
+
+
+async def _do_event(msg, telegram_id: int, user: dict, ev_date: date, desc: str) -> None:
+    """Считает разбор события на дату с живыми статусами и шлёт вердикт по разделам."""
+    has_astro = bool(user.get("birth_time") and user.get("timezone"))
+    stages = _STAGES_ASTRO if has_astro else _STAGES_BASIC
+    label = f"🤝 {desc[:40] or 'Событие'} · {ev_date.isoformat()}"
+
+    req = ProfileRequest(
+        name=user.get("name", ""), gender=user.get("gender", "") or "",
+        birth_date=date.fromisoformat(user["birth_date"]),
+        birth_time=user.get("birth_time"), birth_place=user.get("birth_place"),
+        lat=user.get("lat"), lon=user.get("lon"), timezone=user.get("timezone"),
+        main_request=desc, analysis_type=AnalysisType.event,
+    )
+
+    status = await msg.reply_text(f"{label}\n{stages[0]}")
+    task = asyncio.create_task(asyncio.to_thread(build_event, req, ev_date, desc))
+    idx = 0
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=2.4)
+        if task in done:
+            break
+        idx += 1
+        try:
+            await status.edit_text(f"{label}\n{stages[idx % len(stages)]}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    try:
+        profile = task.result()
+    except Exception as e:  # noqa: BLE001
+        logging.exception("build_event failed")
+        await status.edit_text(f"Не получилось собрать разбор события: {type(e).__name__}: {e}")
+        return
+
+    data = profile.model_dump(mode="json")
+    try:
+        await asyncio.to_thread(database.save_profile, data, telegram_id)
+    except Exception:  # noqa: BLE001
+        logging.exception("save_profile (event) failed")
     try:
         await status.edit_text(f"{label}: готово ✅")
     except Exception:  # noqa: BLE001
@@ -828,6 +921,7 @@ def build_application() -> Application:
         entry_points=[
             CommandHandler("start", cmd_start),
             MessageHandler(filters.Regex(f"^({BTN_PERSON}|{BTN_PERIOD}|{BTN_WORK})$"), analysis_entry),
+            MessageHandler(filters.Regex(f"^{BTN_EVENT}$"), event_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_NAME}$"), edit_name_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_DATE}$"), edit_date_start),
             MessageHandler(filters.Regex(f"^{BTN_EDIT_TIME}$"), edit_time_start),
@@ -844,6 +938,8 @@ def build_application() -> Application:
             EDIT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_time_save)],
             EDIT_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_place_save)],
             EDIT_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_gender_save)],
+            EV_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, event_date_save)],
+            EV_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, event_desc_save)],
         },
         fallbacks=common_fallbacks,
     )

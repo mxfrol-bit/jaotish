@@ -83,6 +83,8 @@ def numerology(birth: date, name: str = "", today: Optional[date] = None) -> dic
     birthday_number = reduce_num(birth.day)
     personal_year = reduce_num(sum_digits(today.year) + birth.month + birth.day)
     personal_month = reduce_num(personal_year + today.month)
+    personal_day = reduce_num(personal_month + today.day)
+    universal_day = reduce_num(sum_digits(today.year) + today.month + today.day)
 
     return {
         "calculation_status": "calculated",
@@ -94,6 +96,8 @@ def numerology(birth: date, name: str = "", today: Optional[date] = None) -> dic
         "personality_number": _name_number(name, "consonants"),
         "personal_year": personal_year,
         "personal_month": personal_month,
+        "personal_day": personal_day,
+        "universal_day": universal_day,
     }
 
 
