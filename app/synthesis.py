@@ -236,16 +236,22 @@ def _post_openrouter(messages: list[dict]) -> tuple[bool, str]:
         )
     except requests.RequestException as e:
         return False, f"сеть/таймаут OpenRouter: {e}"
+    resp.encoding = "utf-8"  # у SSE нет charset → иначе requests декодит как Latin-1 (кракозябры)
     if resp.status_code != 200:
         return False, f"OpenRouter {resp.status_code}: {resp.text[:400]}"
 
     parts: list[str] = []
     err: str | None = None
     try:
-        for raw in resp.iter_lines(decode_unicode=True):
-            if not raw or not raw.startswith("data:"):
-                continue  # пустые строки и ': OPENROUTER PROCESSING' пропускаем
-            payload = raw[5:].strip()
+        # Идём по сырым байтам и декодим UTF-8 сами: байт \n не разрывает многобайтные
+        # символы, поэтому decode по строке безопасен (в отличие от decode_unicode без charset).
+        for raw in resp.iter_lines():
+            if not raw:
+                continue  # пустые строки и keep-alive
+            line = raw.decode("utf-8", "replace")
+            if not line.startswith("data:"):
+                continue  # ': OPENROUTER PROCESSING' и прочее
+            payload = line[5:].strip()
             if payload == "[DONE]":
                 break
             try:
