@@ -35,7 +35,7 @@ from . import database, imagegen, tts, viz
 from .calc import ephemeris
 from .engine import build_event, build_profile, build_synastry
 from .models import AnalysisType, ProfileRequest
-from .synthesis import CREDIBILITY_SHORT
+from .synthesis import CREDIBILITY_SHORT, METHOD_BASIS
 
 # --- состояния онбординга/редактирования/добавления партнёра ---
 (
@@ -120,7 +120,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     user = await asyncio.to_thread(database.get_user, update.effective_user.id)
     if user and user.get("name") and user.get("birth_date"):
         await update.message.reply_text(
-            f"С возвращением, {user['name']}.\nВыбери разбор — данные уже сохранены.",
+            f"С возвращением, {user['name']}.\nВыбери разбор — данные уже сохранены.\n"
+            "/about — на чём построена Матрица (метод).",
             reply_markup=MAIN_MENU,
         )
         return ConversationHandler.END
@@ -375,7 +376,7 @@ def _sections_keyboard(pid: str, sections: list[tuple[str, str]], atype_val: str
         InlineKeyboardButton("🎨 Обложка", callback_data=f"cov:{pid}"),
     ])
     rows.append([
-        InlineKeyboardButton("🔬 Методы", callback_data=f"tech:{pid}"),
+        InlineKeyboardButton("🔬 Расчёт", callback_data=f"tech:{pid}"),
         InlineKeyboardButton("🔊 Озвучить", callback_data=f"tts:{pid}"),
     ])
     rows.append([InlineKeyboardButton("🔄 Сделать заново", callback_data=f"r:{atype_val}")])
@@ -910,6 +911,13 @@ async def cmd_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def cmd_about(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """Команда /about — на чём построена Матрица (метод, по-взрослому)."""
+    ctx.user_data.pop("pending_label", None)
+    await _send_long(update.message, METHOD_BASIS)
+    return ConversationHandler.END
+
+
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data.pop("pending_label", None)
     ctx.user_data.pop("np", None)
@@ -991,6 +999,7 @@ def build_application() -> Application:
         CommandHandler("cancel", cmd_cancel),
         CommandHandler("menu", cmd_menu),
         CommandHandler("data", cmd_data),
+        CommandHandler("about", cmd_about),
     ]
     conv = ConversationHandler(
         entry_points=[
@@ -1036,6 +1045,7 @@ def build_application() -> Application:
 
     app.add_handler(CommandHandler("menu", cmd_menu))
     app.add_handler(CommandHandler("data", cmd_data))
+    app.add_handler(CommandHandler("about", cmd_about))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_COMPAT}$"), compat_menu))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DATA}$"), show_data))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BACK}$"), back_to_menu))

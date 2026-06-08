@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from .. import config, database
 from ..engine import build_profile
 from ..models import AnalysisType, ProfileRequest
-from ..synthesis import CREDIBILITY
+from ..synthesis import CREDIBILITY, METHOD_BASIS
 
 router = APIRouter(tags=["web"])
 
@@ -129,9 +129,19 @@ def landing() -> str:
       <p class=note>Время и город нужны только для более тонкого слоя — без них тоже работает.</p>
     </form>
     <p class=foot>Матрица не ставит диагнозов и не предсказывает судьбу буквально.
-    Важные решения о здоровье, деньгах и отношениях ты принимаешь сам.</p>
+    Важные решения о здоровье, деньгах и отношениях ты принимаешь сам.
+    · <a href='/about'>Как это работает →</a></p>
     """
     return _page("Матрица", body)
+
+
+@router.get("/about", response_class=HTMLResponse)
+def about() -> str:
+    body = (
+        f"<div class=card>{_md_to_html(METHOD_BASIS)}</div>"
+        "<a class=back href='/'>← к разбору</a>"
+    )
+    return _page("Как это работает · Матрица", body)
 
 
 def _build_and_save(pid: str, req: ProfileRequest, analysis_type: str) -> None:
