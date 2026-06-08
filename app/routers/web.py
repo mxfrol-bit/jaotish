@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse
 from .. import config, database
 from ..engine import build_profile
 from ..models import AnalysisType, ProfileRequest
+from ..synthesis import CREDIBILITY
 
 router = APIRouter(tags=["web"])
 
@@ -105,8 +106,12 @@ def landing() -> str:
     )
     body = f"""
     <h1>Матрица</h1>
-    <p class=lead>Это не гадание. Система читает твой «код» — поведение, сильные стороны,
-    зоны риска и повторяющиеся сценарии — и показывает их простым языком.</p>
+    <p class=lead>Это не гороскоп. Система берёт точные параметры момента рождения,
+    считает их по астрономическим эфемеридам космической точности и алгоритмически
+    переводит в устойчивые модели поведения — твой «код»: сильные стороны, зоны риска,
+    повторяющиеся сценарии. Расчёт на данных, а не гадание.</p>
+    <p class=note>🛰 Положения светил берутся из тех же моделей, что используют в астрономии
+    и спутниковой навигации. Никакой мистики — только расчёт и анализ паттернов.</p>
     <form method=post action='/report'>
       <label>Имя</label>
       <input name=name placeholder='Как тебя зовут' required>
@@ -217,6 +222,7 @@ def result(pid: str) -> str:
     title = f"{html.escape(ui.get('name') or 'Профиль')}" + (f" · {html.escape(label)}" if label else "")
     body = (
         f"<h1>{title}</h1>"
+        + f"<p class=note>{html.escape(CREDIBILITY)}</p>"
         + (f"<div class=summary>{summary}</div>" if summary else "")
         + f"<div class=card>{body_html}</div>"
         + "<a class=back href='/'>← новый разбор</a>"
