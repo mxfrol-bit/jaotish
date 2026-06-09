@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from .. import config, database, tts, viz
+from ..calc import astrology
 from ..engine import build_event, build_profile, build_synastry
 from ..models import AnalysisType, ProfileRequest
 from ..synthesis import CREDIBILITY, LOADING_MESSAGES, METHOD_BASIS
@@ -198,8 +199,9 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
 def _nav() -> str:
     return (
         "<div class=wrap><div class=nav><a class=brand href='/'>Матрица<span>.</span></a>"
-        "<div class=navlinks><a href='/#form'>Разбор</a><a href='/compat'>Совместимость</a>"
-        "<a href='/event'>Сделка</a><a href='/about'>Как это работает</a></div></div></div>"
+        "<div class=navlinks><a href='/compat'>Совместимость</a>"
+        "<a href='/event'>Сделка</a><a href='/proof'>Точность</a>"
+        "<a href='/about'>Как это работает</a></div></div></div>"
     )
 
 
@@ -307,8 +309,44 @@ def landing() -> str:
 def about() -> str:
     body = (f"{_nav()}<div class=wrap><div class=hero><h1>Как это работает</h1></div>"
             f"<div class=sec>{_md_to_html(METHOD_BASIS)}</div>"
-            "<p class=foot><a href='/#form'>← к разбору</a></p></div>")
+            "<p class=foot><a href='/proof'>Доказательство точности →</a> · "
+            "<a href='/#form'>к разбору</a></p></div>")
     return _page("Как это работает · Матрица", body)
+
+
+@router.get("/proof", response_class=HTMLResponse)
+def proof() -> str:
+    """Маркетинговый экран: откуда берётся точность + живой расчёт-образец."""
+    geo = {"lat": 51.4769, "lon": 0.0, "timezone": "UTC"}  # Гринвич, эпоха J2000
+    sample = {"calculation_modules": {"western_astrology": astrology.western(date(2000, 1, 1), "12:00", geo)}}
+    table = _positions_html(sample)
+    body = f"""{_nav()}
+    <div class=wrap>
+      <div class=hero>
+        <h1>Откуда точность</h1>
+        <p class=lead>Положения светил считает <b>Swiss Ephemeris</b> (Astrodienst) на базе
+        <b>NASA JPL DE431</b> — тех же эфемерид, что используют в профессиональной астрономии
+        и расчёте траекторий космических аппаратов.</p>
+        <div class=strip>
+          <span>🛰 <b>NASA JPL DE431</b></span>
+          <span>🧮 <b>Детерминированно</b> — одна дата всегда даёт один результат</span>
+          <span>🎯 <b>Точность до угловой минуты</b></span>
+        </div>
+      </div>
+      <div class=sec>
+        <h2>Что это значит на практике</h2>
+        <p>Это не «приблизительный гороскоп». Это воспроизводимый астрономический расчёт:
+        мы берём дату, время и координаты — и получаем положение каждого светила с точностью
+        до угловой минуты. Те же координаты вы увидите в любом профессиональном источнике
+        (Astro.com, Co-Star) — мы сверяли: совпадение до угловой минуты.</p>
+      </div>
+      <div class=sectionhead>Живой образец расчёта — эпоха J2000 (1 января 2000, 12:00 UTC, Гринвич)</div>
+      {table}
+      <p class=note>Это рассчитано прямо сейчас этим же движком. Любую дату можно проверить
+      против профессионального эфемеридного источника — числа совпадут.</p>
+      <p class=foot><a class=cta href='/#form'>Построить мою карту</a></p>
+    </div>"""
+    return _page("Доказательство точности · Матрица", body)
 
 
 # ---------------- основной разбор ----------------

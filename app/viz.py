@@ -27,10 +27,12 @@ _SIGNS = [
     "Овен", "Телец", "Близнецы", "Рак", "Лев", "Дева",
     "Весы", "Скорпион", "Стрелец", "Козерог", "Водолей", "Рыбы",
 ]
-_PLANET_ABBR = {
-    "sun": "Сол", "moon": "Лун", "mercury": "Мер", "venus": "Вен", "mars": "Мар",
-    "jupiter": "Юп", "saturn": "Сат", "uranus": "Ур", "neptune": "Неп", "pluto": "Плу",
+_SIGN_GLYPH = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"]
+_PLANET_GLYPH = {
+    "sun": "☉", "moon": "☽", "mercury": "☿", "venus": "♀", "mars": "♂",
+    "jupiter": "♃", "saturn": "♄", "uranus": "♅", "neptune": "♆", "pluto": "♇",
 }
+_HAIR = "#e4e4e7"  # тонкие волосяные линии
 
 
 def _modules_of(profile_data: dict) -> dict:
@@ -66,56 +68,87 @@ def render_chart(profile_data: dict) -> bytes:
     return _numbers_card(mods, title, subtitle)
 
 
+def _spread(points: list[tuple[float, str]], min_gap: float = 7.0) -> dict[str, float]:
+    """Развести близкие планеты по углу, чтобы глифы не наезжали. Возвращает key->lon_display."""
+    order = sorted(points, key=lambda t: t[0])
+    disp = {k: lon for lon, k in order}
+    lons = [lon for lon, _ in order]
+    keys = [k for _, k in order]
+    for _ in range(40):  # несколько проходов релаксации
+        moved = False
+        for i in range(len(lons)):
+            j = (i + 1) % len(lons)
+            gap = (lons[j] - lons[i]) % 360
+            if gap < min_gap:
+                shift = (min_gap - gap) / 2
+                lons[i] = (lons[i] - shift) % 360
+                lons[j] = (lons[j] + shift) % 360
+                moved = True
+        if not moved:
+            break
+    return {keys[i]: lons[i] for i in range(len(keys))}
+
+
 def _natal_wheel(west: dict, mods: dict, title: str, subtitle: str) -> bytes:
-    fig, ax = plt.subplots(figsize=(6, 6.6), dpi=150)
-    ax.set_xlim(-1.15, 1.15)
-    ax.set_ylim(-1.25, 1.15)
+    fig, ax = plt.subplots(figsize=(6, 6.7), dpi=170)
+    ax.set_xlim(-1.2, 1.2)
+    ax.set_ylim(-1.32, 1.2)
     ax.set_aspect("equal")
     ax.axis("off")
 
-    r_out, r_in, r_planet = 1.0, 0.80, 0.63
-    ax.add_patch(plt.Circle((0, 0), r_out, fill=False, color=_LINE, lw=1.4))
-    ax.add_patch(plt.Circle((0, 0), r_in, fill=False, color=_LINE, lw=1.0))
+    r_out, r_sign, r_in, r_pl = 1.0, 1.085, 0.80, 0.64
+    ax.add_patch(plt.Circle((0, 0), r_out, fill=False, color=_INK, lw=1.1))
+    ax.add_patch(plt.Circle((0, 0), r_in, fill=False, color=_HAIR, lw=0.9))
 
+    # сектора знаков + глифы по ободу
     for i in range(12):
         x0, y0 = _xy(i * 30, r_in)
         x1, y1 = _xy(i * 30, r_out)
-        ax.plot([x0, x1], [y0, y1], color=_LINE, lw=0.8)
-        lx, ly = _xy(i * 30 + 15, (r_in + r_out) / 2)
-        ax.text(lx, ly, _SIGNS[i], ha="center", va="center", fontsize=7,
-                color=_MUTED, rotation=0)
+        ax.plot([x0, x1], [y0, y1], color=_HAIR, lw=0.7)
+        gx, gy = _xy(i * 30 + 15, r_sign)
+        ax.text(gx, gy, _SIGN_GLYPH[i], ha="center", va="center", fontsize=13, color=_MUTED)
+    # градусные деления (каждые 5°, тонко)
+    for d in range(0, 360, 5):
+        x0, y0 = _xy(d, r_out)
+        x1, y1 = _xy(d, r_out - (0.05 if d % 30 == 0 else 0.028))
+        ax.plot([x0, x1], [y0, y1], color=_HAIR, lw=0.6)
 
-    # планеты + асцендент
-    points: list[tuple[float, str, str]] = []
-    for key in _PLANET_ABBR:
+    # планеты — монохромные глифы, разведённые по углу
+    pts = []
+    for key in _PLANET_GLYPH:
         p = (west.get("planets") or {}).get(key) or west.get(key)
         lon = _lon(p) if p else None
         if lon is not None:
-            points.append((lon, _PLANET_ABBR[key], west.get("dominant_element", "воздух")))
+            pts.append((lon, key))
+    disp = _spread(pts)
+    for lon, key in pts:
+        dl = disp.get(key, lon)
+        xa, ya = _xy(lon, r_in)            # настоящая долгота — отметка на ободе
+        xb, yb = _xy(lon, r_in - 0.03)
+        ax.plot([xa, xb], [ya, yb], color=_INK, lw=0.8)
+        gx, gy = _xy(dl, r_pl)             # разведённый глиф
+        ax.text(gx, gy, _PLANET_GLYPH[key], ha="center", va="center", fontsize=14, color=_INK)
+        lx, ly = _xy(dl, r_pl - 0.12)
+        deg = int(float(((west.get("planets") or {}).get(key) or west.get(key) or {}).get("degree", 0)))
+        ax.text(lx, ly, f"{deg}°", ha="center", va="center", fontsize=6.5, color=_MUTED)
+
+    # асцендент — выраженная ось
     asc_lon = _lon(west.get("ascendant") or {})
     if asc_lon is not None:
-        ax.annotate("ASC", xy=_xy(asc_lon, r_out), xytext=_xy(asc_lon, r_out + 0.1),
-                    ha="center", va="center", fontsize=7.5, color=_INK, fontweight="bold")
-        x0, y0 = _xy(asc_lon, r_in)
-        x1, y1 = _xy(asc_lon, r_out)
-        ax.plot([x0, x1], [y0, y1], color=_INK, lw=1.2)
-
-    dom = west.get("dominant_element", "воздух")
-    pcolor = _ELEMENT_COLOR.get(dom, _INK)
-    for lon, abbr, _ in points:
-        x, y = _xy(lon, r_planet)
-        ax.plot(x, y, "o", ms=6, color=pcolor)
-        lx, ly = _xy(lon, r_planet - 0.13)
-        ax.text(lx, ly, abbr, ha="center", va="center", fontsize=7, color=_INK)
+        xa, ya = _xy(asc_lon, r_in)
+        xb, yb = _xy(asc_lon, r_out)
+        ax.plot([xa, xb], [ya, yb], color=_INK, lw=1.4)
+        lx, ly = _xy(asc_lon, r_out + 0.075)
+        ax.text(lx, ly, "Asc", ha="center", va="center", fontsize=8, color=_INK, fontweight="bold")
 
     sun = west.get("sun", {}).get("sign", "")
     moon = west.get("moon", {}).get("sign", "")
     asc = west.get("ascendant", {}).get("sign", "")
-    ax.text(0, 1.18, title, ha="center", va="center", fontsize=14, color=_INK, fontweight="bold")
+    ax.text(0, 1.255, title, ha="center", va="center", fontsize=15, color=_INK, fontweight="bold")
     if subtitle:
-        ax.text(0, 1.06, subtitle, ha="center", va="center", fontsize=8.5, color=_MUTED)
-    foot = f"☉ {sun}   ☾ {moon}   ASC {asc}   ·   стихия: {dom}"
-    ax.text(0, -1.16, foot, ha="center", va="center", fontsize=8.5, color=_INK)
+        ax.text(0, 1.15, subtitle, ha="center", va="center", fontsize=9, color=_MUTED)
+    ax.text(0, -1.255, f"☉ {sun}     ☽ {moon}     Asc {asc}",
+            ha="center", va="center", fontsize=9.5, color=_INK)
 
     return _to_png(fig)
 
