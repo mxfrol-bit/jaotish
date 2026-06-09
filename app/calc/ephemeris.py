@@ -161,6 +161,21 @@ def match_aspect(lon_a: float, lon_b: float, aspects: list[dict]) -> Optional[di
     return None
 
 
+def house_of(lon: float, houses: list[dict]) -> int:
+    """В каком доме (1..12) лежит долгота lon, по куспидам Placidus."""
+    lon = lon % 360.0
+    cusps = [h["lon"] % 360.0 for h in houses]  # index 0 = куспид 1-го дома
+    for i in range(12):
+        a, b = cusps[i], cusps[(i + 1) % 12]
+        if a <= b:
+            if a <= lon < b:
+                return i + 1
+        else:  # дом пересекает 0° Овна
+            if lon >= a or lon < b:
+                return i + 1
+    return 12
+
+
 def ascendant_houses(jd_ut: float, lat: float, lon: float, sidereal: bool = False) -> dict:
     """Асцендент, MC и 12 куспидов домов (Placidus). sidereal=True → айянамша Лахири."""
     flags = swe.FLG_SIDEREAL if sidereal else 0

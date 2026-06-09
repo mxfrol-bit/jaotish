@@ -37,15 +37,33 @@ def western(birth: date, birth_time: Optional[str], geo: Optional[dict]) -> dict
         elements[planets[key]["element"]] += 1
     dominant = max(elements, key=elements.get)
 
+    # Готовый к показу список положений (как у Co-Star: знак, градус, дом, ретроградность).
+    cusps = houses["houses"]
+    positions = []
+    for key in eph.PLANETS:
+        p = planets[key]
+        positions.append({
+            "key": key,
+            "name": p["name"],
+            "sign": p["sign"],
+            "degree": p["degree"],
+            "minute": int(round((float(p["degree"]) % 1) * 60)),
+            "house": eph.house_of(p["lon"], cusps),
+            "retrograde": bool(p.get("retrograde")),
+        })
+
+    asc = houses["ascendant"]
     return {
         "calculation_status": "calculated",
         "zodiac": _CONFIG["western"]["zodiac"],
         "house_system": _CONFIG["western"]["house_system"],
         "sun": _short(planets["sun"]),
         "moon": _short(planets["moon"]),
-        "ascendant": _short(houses["ascendant"]),
+        "ascendant": {**_short(asc), "house": 1,
+                      "minute": int(round((float(asc["degree"]) % 1) * 60))},
         "midheaven": _short(houses["midheaven"]),
         "planets": {k: _short(planets[k]) for k in eph.PLANETS},
+        "positions": positions,
         "elements_balance": elements,
         "dominant_element": dominant,
     }

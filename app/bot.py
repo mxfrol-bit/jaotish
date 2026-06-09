@@ -35,7 +35,7 @@ from . import database, imagegen, tts, viz
 from .calc import ephemeris
 from .engine import build_event, build_profile, build_synastry
 from .models import AnalysisType, ProfileRequest
-from .synthesis import CREDIBILITY_SHORT, METHOD_BASIS
+from .synthesis import CREDIBILITY_SHORT, LOADING_MESSAGES, METHOD_BASIS
 
 # --- состояния онбординга/редактирования/добавления партнёра ---
 (
@@ -101,18 +101,10 @@ _ASTRO_PITCH = (
 )
 
 # Живые статусы ожидания («вау-эффект»): крутятся, пока идёт расчёт + AI-синтез.
-_STAGES_ASTRO = [
-    "🛰️ Запрашиваю астрономические эфемериды на момент рождения…",
-    "🪐 Вычисляю точные параметры положения светил…",
-    "🧮 Прогоняю алгоритм поведенческих паттернов…",
-    "📊 Свожу числовые и временные слои данных…",
-    "🧬 Собираю единый профиль…",
-]
-_STAGES_BASIC = [
-    "🧮 Считаю параметры по дате рождения…",
-    "📊 Прогоняю алгоритм поведенческих паттернов…",
-    "🧬 Собираю единый профиль…",
-]
+# Полный набор «спутниковых» статусов — для разбора с астрологией (время+место).
+_STAGES_ASTRO = LOADING_MESSAGES
+# Без времени/места небесную часть не показываем — берём числовые/поведенческие статусы.
+_STAGES_BASIC = [m for m in LOADING_MESSAGES if m[0] not in "🛰📡🪐🌙✴️📐🔭🧭🌌"][:8] or LOADING_MESSAGES[8:14]
 
 
 # ---------- /start: онбординг или меню ----------

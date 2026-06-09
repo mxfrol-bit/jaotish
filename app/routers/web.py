@@ -18,11 +18,69 @@ from starlette.concurrency import run_in_threadpool
 from .. import config, database, tts, viz
 from ..engine import build_event, build_profile, build_synastry
 from ..models import AnalysisType, ProfileRequest
-from ..synthesis import CREDIBILITY, METHOD_BASIS
+from ..synthesis import CREDIBILITY, LOADING_MESSAGES, METHOD_BASIS
 
 router = APIRouter(tags=["web"])
 
 _web_status: dict[str, str] = {}  # pid -> "error:<text>" если фон упал
+
+# Глифы и короткие поведенческие пояснения светил (для блока «Положение светил»).
+_GLYPH = {
+    "sun": "☉", "moon": "☽", "mercury": "☿", "venus": "♀", "mars": "♂",
+    "jupiter": "♃", "saturn": "♄", "uranus": "♅", "neptune": "♆", "pluto": "♇",
+    "ascendant": "Asc",
+}
+_GLOSS = {
+    "sun": "ядро личности и воля — как ты светишь",
+    "moon": "эмоции и внутренние реакции — что нужно для покоя",
+    "mercury": "мышление и речь — как обрабатываешь информацию",
+    "venus": "что любишь и как привязываешься",
+    "mars": "энергия действия — как добиваешься и злишься",
+    "jupiter": "рост и оптимизм — где расширяешься",
+    "saturn": "дисциплина и границы — где зона напряжения",
+    "uranus": "независимость — где ломаешь шаблоны",
+    "neptune": "воображение и идеалы — где растворяешься",
+    "pluto": "глубина и власть — где трансформируешься",
+    "ascendant": "первое впечатление — твоя «маска»",
+}
+_HOUSE_RU = {1: "1-й", 2: "2-й", 3: "3-й", 4: "4-й", 5: "5-й", 6: "6-й",
+             7: "7-й", 8: "8-й", 9: "9-й", 10: "10-й", 11: "11-й", 12: "12-й"}
+
+
+def _modules_of(data: dict) -> dict:
+    m = data.get("calculation_modules") or {}
+    return m.get("person_a", m)
+
+
+def _positions_html(data: dict) -> str:
+    """Блок «Положение светил» в стиле Co-Star — точные позиции как доказательство."""
+    w = (_modules_of(data).get("western_astrology") or {})
+    if w.get("calculation_status") != "calculated":
+        return ""
+    items = []
+    asc = w.get("ascendant") or {}
+    if asc.get("sign"):
+        items.append(("ascendant", "Асцендент", asc.get("sign"), int(float(asc.get("degree", 0))),
+                      asc.get("minute", 0), 1, False))
+    for p in w.get("positions") or []:
+        items.append((p["key"], p["name"], p["sign"], int(float(p["degree"])),
+                      p.get("minute", 0), p.get("house"), p.get("retrograde")))
+    rows = []
+    for key, name, sign, deg, mn, house, retro in items:
+        rx = " <span class=rx>℞</span>" if retro else ""
+        hh = f"<span class=house>{_HOUSE_RU.get(house, '')} дом</span>" if house else ""
+        rows.append(
+            f"<div class=pl><div class=glyph>{_GLYPH.get(key, '·')}</div>"
+            f"<div class=plmain><div class=plname>{html.escape(name)}{rx}</div>"
+            f"<div class=plpos>{html.escape(sign)} {deg}°{mn:02d}′ · {hh}</div>"
+            f"<div class=plgloss>{html.escape(_GLOSS.get(key, ''))}</div></div></div>"
+        )
+    return (
+        "<div class=sectionhead>Положение светил в момент рождения</div>"
+        "<p class=note>Рассчитано по астрономическим эфемеридам — до угловой минуты. "
+        "Это те же координаты, что вы видите в профессиональных астрономических картах.</p>"
+        f"<div class=planets>{''.join(rows)}</div>"
+    )
 
 _ANALYSIS_LABELS = {
     "personality": "Личность — базовый код",
@@ -98,6 +156,14 @@ button:hover{background:#000;}
 .sec h2{font-size:20px;font-weight:680;margin:0 0 8px;letter-spacing:-.01em;}
 .sec p{margin:9px 0;}
 .chart{display:block;max-width:100%;border:1px solid var(--line);border-radius:16px;margin:16px 0;}
+.planets{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:14px 0 8px;}
+.pl{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
+.glyph{font-size:24px;line-height:1.2;width:30px;text-align:center;color:var(--accent);flex:none;}
+.plname{font-weight:650;font-size:15px;}
+.plpos{color:var(--ink);font-size:14px;margin-top:1px;}
+.plgloss{color:var(--muted);font-size:13px;margin-top:3px;}
+.house{color:var(--muted);}
+.rx{color:#a11;font-size:12px;}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0;}
 .btnlink{display:inline-block;padding:11px 18px;border:1px solid var(--line);border-radius:11px;
  color:var(--ink);font-size:15px;font-weight:560;}
@@ -159,9 +225,18 @@ def _md_to_html(md: str) -> str:
 
 
 def _spinner_page(pid: str, title: str, lead: str) -> str:
-    body = (f"{_nav()}<div class=wrap><div class=hero><h1>{html.escape(title)}</h1>"
-            f"<p class=lead>{html.escape(lead)}</p><div class=spinner></div></div></div>")
-    head = f"<meta http-equiv='refresh' content='4;url=/r/{pid}'>"
+    import json as _json
+    msgs = _json.dumps(LOADING_MESSAGES, ensure_ascii=False)
+    body = (
+        f"{_nav()}<div class=wrap><div class=hero><h1>{html.escape(title)}</h1>"
+        f"<div class=spinner></div>"
+        f"<p id=ld class=lead>{html.escape(lead)}</p></div></div>"
+        f"<script>const M={msgs};let i=Math.floor(Math.random()*M.length);"
+        "const e=document.getElementById('ld');"
+        "function t(){e.textContent=M[i%M.length];i++;}t();setInterval(t,1500);</script>"
+    )
+    # Перезагрузка опрашивает результат; JS крутит статусы между перезагрузками.
+    head = f"<meta http-equiv='refresh' content='6;url=/r/{pid}'>"
     return _page("Считаю…", body, head)
 
 
@@ -176,17 +251,16 @@ def landing() -> str:
     body = f"""{_nav()}
     <div class=wrap>
       <div class=hero>
-        <h1>Поведенческий профайлинг на данных — без гороскопов</h1>
-        <p class=lead>Матрица берёт точные параметры момента рождения, считает их по
-        астрономическим эфемеридам космической точности и переводит на язык поведенческой
-        психологии: твои сильные стороны, зоны риска и повторяющиеся сценарии.</p>
-        <a class=cta href='#form'>Получить разбор</a>
+        <h1>Точная карта твоего характера — по небу в момент, когда ты родился</h1>
+        <p class=lead>Матрица вычисляет положение светил в секунду твоего рождения — до угловой
+        минуты — и переводит его в понятный портрет: сильные стороны, слепые зоны и сценарии,
+        которые повторяются в жизни.</p>
+        <a class=cta href='#form'>Построить мою карту</a>
         <a class='cta ghost' href='/about'>Как это работает</a>
         <div class=strip>
-          <span>🛰 <b>Эфемериды JPL</b> — как в навигации</span>
-          <span>🧮 <b>Детерминированный расчёт</b></span>
-          <span>📊 <b>Big Five</b>, Канеман, Юнг</span>
-          <span>🔒 Это инструмент, не предсказание</span>
+          <span>🛰 <b>Астрономические эфемериды</b> — как в космической навигации</span>
+          <span>🧮 <b>Точность до угловой минуты</b></span>
+          <span>📊 Язык <b>поведенческой психологии</b></span>
         </div>
       </div>
 
@@ -442,14 +516,16 @@ def result(pid: str) -> str:
     summary = html.escape((rep.get("short_summary") or "").strip())
     toc_html, cards = _render_sections(rep.get("full_report") or "")
     tech = rep.get("tech_methods") or ""
-    advanced = (f"<details><summary>🔬 Подробный расчёт (для интересующихся)</summary>"
+    advanced = (f"<details><summary>🔬 Полный технический расчёт</summary>"
                 f"{_md_to_html(tech)}</details>") if tech else ""
+    positions = _positions_html(data)
     body = f"""{_nav()}
     <div class=wrap>
       <div class=hero><h1>{title}</h1></div>
       <div class=cred>{html.escape(CREDIBILITY)}</div>
       {f'<p class=summary>{summary}</p>' if summary else ''}
       <img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>
+      {positions}
       <div class=actions>
         <a class=btnlink href='/voice/{pid}.mp3'>🔊 Слушать разбор</a>
         <a class=btnlink href='/'>＋ Новый разбор</a>
@@ -458,7 +534,7 @@ def result(pid: str) -> str:
       {toc_html}
       {cards}
       {advanced}
-      <p class=foot>Это вероятностная карта для саморефлексии, а не диагноз и не предсказание.</p>
+      <p class=foot>Вероятностная карта для саморефлексии. Важные решения о здоровье, деньгах и отношениях вы принимаете сами.</p>
     </div>"""
     return _page("Твой разбор · Матрица", body)
 
