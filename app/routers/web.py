@@ -100,7 +100,7 @@ _FEATURES = [
 
 _CSS = """
 :root{--ink:#15161a;--muted:#6b7280;--line:#e7e8ec;--bg:#ffffff;--soft:#f7f7f9;
- --accent:#3b3f8c;--accent2:#111217;}
+ --accent:#1a1a1d;--accent2:#0a0a0c;}
 *{box-sizing:border-box;}
 html{scroll-behavior:smooth;}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -242,25 +242,26 @@ def _spinner_page(pid: str, title: str, lead: str) -> str:
     return _page("Считаю…", body, head)
 
 
-# ---------------- лендинг с кинематографичной анимацией ----------------
+# ---------------- лендинг: чёрно-белый нуар на частицах ----------------
 _STAGE_CSS = """
-.stage{position:relative;height:94vh;min-height:580px;overflow:hidden;
- background:radial-gradient(120% 95% at 50% 32%,#171c2c 0%,#0b0d12 68%);}
-.sky{position:absolute;inset:0;width:100%;height:100%;display:block;}
+.stage{position:relative;height:96vh;min-height:600px;overflow:hidden;background:#f4f3ee;}
+.stage:after{content:'';position:absolute;inset:0;pointer-events:none;
+ box-shadow:inset 0 0 240px rgba(0,0,0,.22);}
+.sky{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;}
 .stagenav{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
- align-items:center;padding:20px 24px;z-index:2;}
-.brandw{color:#fff;font-weight:700;font-size:18px;text-decoration:none;}
-.brandw span{color:#8b93f8;}
-.stagenav>div a{color:rgba(255,255,255,.72);text-decoration:none;margin-left:20px;font-size:14px;}
-.stagehero{position:absolute;left:0;right:0;bottom:0;padding:64px 24px 58px;z-index:2;text-align:center;
- background:linear-gradient(180deg,rgba(11,13,18,0),rgba(11,13,18,.80) 62%);}
-.bigh{color:#fff;font-size:clamp(30px,5.4vw,52px);font-weight:780;letter-spacing:-.025em;margin:0 0 12px;line-height:1.06;}
-.bigp{color:rgba(255,255,255,.82);font-size:clamp(15px,2.2vw,20px);margin:0 auto 24px;max-width:580px;}
-.cta2{display:inline-block;background:#fff;color:#0b0d12;padding:15px 32px;border-radius:12px;
- font-weight:680;font-size:16px;text-decoration:none;}
-.cta2:hover{background:#e9ecf5;}
-.scrollhint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:rgba(255,255,255,.5);
- font-size:12px;z-index:2;animation:bobh 1.8s ease-in-out infinite;}
+ align-items:center;padding:22px 26px;z-index:2;}
+.brandw{color:#0d0d0f;font-weight:800;font-size:18px;letter-spacing:.04em;text-decoration:none;text-transform:uppercase;}
+.stagenav>div a{color:#0d0d0f;text-decoration:none;margin-left:22px;font-size:12px;text-transform:uppercase;letter-spacing:.1em;}
+.stagehero{position:absolute;left:0;right:0;bottom:0;padding:46px 24px 58px;z-index:2;text-align:center;pointer-events:none;}
+.stagehero>*{pointer-events:auto;}
+.bigh{color:#0a0a0c;font-family:Georgia,'Times New Roman',serif;font-size:clamp(32px,6vw,66px);
+ font-weight:700;letter-spacing:-.005em;margin:0 0 14px;line-height:1.0;text-transform:uppercase;}
+.bigp{color:#46453f;font-size:clamp(14px,2vw,18px);margin:0 auto 24px;max-width:520px;}
+.cta2{display:inline-block;background:#0a0a0c;color:#f4f3ee;padding:16px 36px;border-radius:0;
+ font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;text-decoration:none;}
+.cta2:hover{background:#000;}
+.scrollhint{position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#8f8e87;
+ font-size:11px;letter-spacing:.18em;text-transform:uppercase;z-index:2;animation:bobh 1.9s ease-in-out infinite;}
 @keyframes bobh{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
 """
 
@@ -268,85 +269,65 @@ _STAGE_HTML = """
 <section class=stage>
   <canvas id=sky class=sky></canvas>
   <div class=stagenav>
-    <a class=brandw href='/'>Матрица<span>.</span></a>
+    <a class=brandw href='/'>Матрица</a>
     <div><a href='/proof'>Точность</a><a href='/about'>Метод</a></div>
   </div>
   <div class=stagehero>
-    <h1 class=bigh>Точная карта твоего характера</h1>
-    <p class=bigp>Положение светил в секунду твоего рождения — собирается в живую карту
-    и переводится на язык поведения.</p>
-    <a class=cta2 href='#form'>Построить мою карту</a>
+    <h1 class=bigh>Карта твоего<br>характера</h1>
+    <p class=bigp>Тысячи точек собираются в небо момента твоего рождения. Проведи по нему.</p>
+    <a class=cta2 href='#form'>Построить карту</a>
   </div>
-  <div class=scrollhint>↓ листай вниз</div>
+  <div class=scrollhint>листай вниз</div>
 </section>
 """
 
-# Vanilla Canvas: звёзды → колесо собирается → глифы планет влетают в дома → связи.
-# Глифы заданы юникод-эскейпами, чтобы не зависеть от кодировки при отдаче.
+# Чёрные частицы на белой бумаге: собираются в карту-колесо, разлетаются от курсора
+# и пересобираются. Нуар, без внешних библиотек.
 _STAGE_JS = r"""
 (function(){
   var cv=document.getElementById('sky'); if(!cv||!cv.getContext) return;
-  var ctx=cv.getContext('2d'), W,H,DPR,cx,cy,R,stars=[];
-  var SIGNS=['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
-  var PLN=['☉','☽','☿','♀','♂','♃','♄','♅','♆','♇'];
-  var TARG=[18,52,80,116,150,196,232,270,300,335];
-  var planets=PLN.map(function(g,i){return {g:g,a:TARG[i]*Math.PI/180,sx:Math.random(),sy:Math.random(),j:Math.random()*6.28};});
-  function resize(){
+  var ctx=cv.getContext('2d'), W,H,DPR,cx,cy,P=[],targets=[],mx=-1e5,my=-1e5;
+  function rnd(a,b){return a+Math.random()*(b-a);}
+  function buildTargets(){
+    targets=[];var R=Math.min(W,H)*0.31;
+    for(var i=0;i<360;i+=2){var a=i*Math.PI/180;targets.push([cx+Math.cos(a)*R,cy+Math.sin(a)*R,0.9]);}
+    for(var i=0;i<360;i+=4){var a=i*Math.PI/180;targets.push([cx+Math.cos(a)*R*0.80,cy+Math.sin(a)*R*0.80,0.45]);}
+    for(var s=0;s<12;s++){var a=s*30*Math.PI/180;for(var t=0.80;t<=1.0001;t+=0.035){targets.push([cx+Math.cos(a)*R*t,cy+Math.sin(a)*R*t,0.55]);}}
+    var pa=[20,55,85,120,155,200,235,270,305,340];
+    for(var k=0;k<pa.length;k++){var a=pa[k]*Math.PI/180;var bx=cx+Math.cos(a)*R*0.6,by=cy+Math.sin(a)*R*0.6;
+      for(var n=0;n<30;n++){var rr=Math.sqrt(Math.random())*11,ta=Math.random()*6.2832;targets.push([bx+Math.cos(ta)*rr,by+Math.sin(ta)*rr,1]);}}
+  }
+  function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);
-    W=cv.clientWidth;H=cv.clientHeight;
-    cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
-    cx=W/2;cy=H*0.45;R=Math.min(W,H*1.05)*0.33;
-    stars=[];var n=Math.round(W*H/9000);
-    for(var i=0;i<n;i++)stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.2+0.2,p:Math.random()*6.28,s:Math.random()*0.5+0.2});
+    W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx=W/2;cy=H*0.43;buildTargets();
+    var dust=Math.round(W*H/15000),N=targets.length+dust,prev=P;P=[];
+    for(var i=0;i<N;i++){var has=i<targets.length;
+      var sx=prev[i]?prev[i].x:rnd(0,W),sy=prev[i]?prev[i].y:rnd(0,H);
+      P.push({x:sx,y:sy,vx:0,vy:0,
+        tx:has?targets[i][0]:rnd(0,W),ty:has?targets[i][1]:rnd(0,H),
+        a:has?targets[i][2]:0.13,dust:!has,ph:Math.random()*6.28});}
   }
-  function ease(x){return x<0.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;}
-  function xy(a,r){return [cx+Math.cos(a-Math.PI/2)*r, cy+Math.sin(a-Math.PI/2)*r];}
-  var t0=null;
   function frame(ts){
-    if(t0==null)t0=ts; var T=ts-t0;
     ctx.clearRect(0,0,W,H);
-    for(var i=0;i<stars.length;i++){var s=stars[i];var tw=0.5+0.5*Math.sin(ts*0.001*s.s+s.p);
-      ctx.globalAlpha=0.22+0.5*tw;ctx.fillStyle='#cdd3e0';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.2832);ctx.fill();}
-    ctx.globalAlpha=1;
-    var rot=T*0.0000115*Math.PI*2;
-    ctx.strokeStyle='rgba(220,224,235,0.5)';ctx.lineWidth=1.2;
-    var ring=ease(Math.min(1,T/700));
-    ctx.beginPath();ctx.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+ring*6.2832);ctx.stroke();
-    var ring2=ease(Math.min(1,Math.max(0,(T-200)/700)));
-    ctx.strokeStyle='rgba(150,156,170,0.22)';ctx.lineWidth=0.8;
-    ctx.beginPath();ctx.arc(cx,cy,R*0.78,-Math.PI/2,-Math.PI/2+ring2*6.2832);ctx.stroke();
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    for(var i=0;i<12;i++){
-      var p=ease(Math.min(1,Math.max(0,(T-400-i*45)/520)));
-      if(p<=0)continue;
-      var ang=i*30*Math.PI/180+rot, a0=xy(ang,R*0.78), a1=xy(ang,R);
-      ctx.strokeStyle='rgba(150,156,170,'+(0.22*p)+')';ctx.lineWidth=0.7;
-      ctx.beginPath();ctx.moveTo(a0[0],a0[1]);ctx.lineTo(a1[0],a1[1]);ctx.stroke();
-      var g=xy((i*30+15)*Math.PI/180+rot,R*1.075);
-      ctx.globalAlpha=p;ctx.fillStyle='rgba(205,211,224,0.85)';ctx.font='15px serif';
-      ctx.fillText(SIGNS[i],g[0],g[1]);ctx.globalAlpha=1;
+    for(var i=0;i<P.length;i++){var p=P[i];var tx=p.tx,ty=p.ty;
+      if(p.dust){tx=p.tx+Math.cos(ts*0.0003+p.ph)*34;ty=p.ty+Math.sin(ts*0.0004+p.ph)*34;}
+      var ax=(tx-p.x)*0.02,ay=(ty-p.y)*0.02;
+      var dx=p.x-mx,dy=p.y-my,d2=dx*dx+dy*dy,RAD=130;
+      if(d2<RAD*RAD){var d=Math.sqrt(d2)||1;var f=(RAD-d)/RAD*6;ax+=dx/d*f;ay+=dy/d*f;}
+      p.vx=(p.vx+ax)*0.85;p.vy=(p.vy+ay)*0.85;p.x+=p.vx;p.y+=p.vy;
+      ctx.globalAlpha=p.a;ctx.fillStyle='#121214';
+      var s=p.dust?1:1.5;ctx.fillRect(p.x,p.y,s,s);
     }
-    var rPl=R*0.6,pos=[];
-    for(var i=0;i<planets.length;i++){
-      var pl=planets[i], st=1000+i*90, p=ease(Math.min(1,Math.max(0,(T-st)/900)));
-      if(p<=0){pos[i]=null;continue;}
-      var tgt=xy(pl.a+rot,rPl), sx=pl.sx*W, sy=pl.sy*H;
-      var bob=p>0.98?Math.sin(ts*0.001+pl.j)*2:0;
-      var x=sx+(tgt[0]-sx)*p, y=sy+(tgt[1]-sy)*p+bob;
-      pos[i]=[x,y];
-      ctx.globalAlpha=p;ctx.shadowColor='rgba(130,140,235,0.7)';ctx.shadowBlur=14*p;
-      ctx.fillStyle='#f2f4fa';ctx.font='20px serif';ctx.fillText(pl.g,x,y);
-      ctx.shadowBlur=0;ctx.globalAlpha=1;
-    }
-    var al=ease(Math.min(1,Math.max(0,(T-2100)/1000)));
-    if(al>0){var pr=[[0,5],[1,7],[2,9],[3,6],[4,8]];
-      ctx.strokeStyle='rgba(130,140,235,'+(0.22*al)+')';ctx.lineWidth=0.7;
-      for(var k=0;k<pr.length;k++){var a=pos[pr[k][0]],b=pos[pr[k][1]];
-        if(a&&b){ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();}}}
-    requestAnimationFrame(frame);
+    ctx.globalAlpha=1;requestAnimationFrame(frame);
   }
-  window.addEventListener('resize',resize);
-  resize();requestAnimationFrame(frame);
+  function move(e){var r=cv.getBoundingClientRect();var t=e.touches?e.touches[0]:e;mx=t.clientX-r.left;my=t.clientY-r.top;}
+  function leave(){mx=-1e5;my=-1e5;}
+  window.addEventListener('resize',build);
+  cv.addEventListener('mousemove',move);cv.addEventListener('mouseleave',leave);
+  cv.addEventListener('touchmove',function(e){move(e);},{passive:true});
+  cv.addEventListener('touchend',leave);
+  build();requestAnimationFrame(frame);
 })();
 """
 
