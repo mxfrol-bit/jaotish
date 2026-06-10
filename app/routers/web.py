@@ -281,58 +281,70 @@ _STAGE_HTML = """
 </section>
 """
 
-# Чёрные частицы на белой бумаге: собираются в карту-колесо, разлетаются от курсора
-# и пересобираются. Нуар, без внешних библиотек.
+# Вращающийся 3D-глобус из чёрных точек + наклонные орбиты с планетами.
+# Плавно (мягкий спринг + высокое демпфирование), нуар, без внешних библиотек.
 _STAGE_JS = r"""
 (function(){
   var cv=document.getElementById('sky'); if(!cv||!cv.getContext) return;
-  var ctx=cv.getContext('2d'), W,H,DPR,cx,cy,P=[],targets=[],mx=-1e5,my=-1e5;
+  var ctx=cv.getContext('2d'), W,H,DPR,cx,cy,SCALE,P=[],mx=-1e5,my=-1e5;
+  var TX=0.42, angY=0, phi1=0, phi2=Math.PI;
+  var R1=1.55,T1=0.55,R2=2.05,T2=-0.62;
   function rnd(a,b){return a+Math.random()*(b-a);}
-  function buildTargets(){
-    targets=[];var R=Math.min(W,H)*0.31;
-    // зодиакальное кольцо
-    for(var i=0;i<360;i+=2){var a=i*Math.PI/180;targets.push([cx+Math.cos(a)*R,cy+Math.sin(a)*R,0.9]);}
-    for(var i=0;i<360;i+=4){var a=i*Math.PI/180;targets.push([cx+Math.cos(a)*R*0.80,cy+Math.sin(a)*R*0.80,0.4]);}
-    for(var s=0;s<12;s++){var a=s*30*Math.PI/180;for(var t=0.80;t<=1.0001;t+=0.04){targets.push([cx+Math.cos(a)*R*t,cy+Math.sin(a)*R*t,0.5]);}}
-    // планеты-кластеры на кольце
-    var pa=[20,55,85,120,155,200,235,270,305,340];
-    for(var k=0;k<pa.length;k++){var a=pa[k]*Math.PI/180;var bx=cx+Math.cos(a)*R*0.6,by=cy+Math.sin(a)*R*0.6;
-      for(var n=0;n<26;n++){var rr=Math.sqrt(Math.random())*10,ta=Math.random()*6.2832;targets.push([bx+Math.cos(ta)*rr,by+Math.sin(ta)*rr,0.95]);}}
-    // ЛУНА в центре — полумесяц из частиц (диск минус смещённый диск)
-    var Rm=R*0.6, ox=Rm*0.46;
-    for(var n=0;n<2200;n++){
-      var rx=rnd(-Rm,Rm), ry=rnd(-Rm,Rm);
-      var inMoon=rx*rx+ry*ry<=Rm*Rm;
-      var inCut=(rx-ox)*(rx-ox)+ry*ry<=(Rm*0.94)*(Rm*0.94);
-      if(inMoon&&!inCut){
-        var edge=Math.sqrt(rx*rx+ry*ry)/Rm;           // у края плотнее/темнее
-        targets.push([cx+rx,cy+ry, 0.55+0.4*edge]);
-      }
-    }
-  }
+  function fib(n){var p=[],ga=Math.PI*(3-Math.sqrt(5));
+    for(var i=0;i<n;i++){var y=1-(i/(n-1))*2,r=Math.sqrt(Math.max(0,1-y*y)),th=ga*i;
+      p.push({x:Math.cos(th)*r,y:y,z:Math.sin(th)*r});}return p;}
+  function ringPt(rr,rt,th){var x=Math.cos(th)*rr,z=Math.sin(th)*rr,y=0,ct=Math.cos(rt),st=Math.sin(rt);
+    return {x:x,y:y*ct-z*st,z:y*st+z*ct};}
+  var sphere=fib(760), ring1=[], ring2=[], pl1=[], pl2=[];
+  for(var i=0;i<96;i++)ring1.push(ringPt(R1,T1,i/96*6.2832));
+  for(var i=0;i<116;i++)ring2.push(ringPt(R2,T2,i/116*6.2832));
+  for(var i=0;i<18;i++)pl1.push({x:rnd(-.12,.12),y:rnd(-.12,.12),z:rnd(-.12,.12)});
+  for(var i=0;i<18;i++)pl2.push({x:rnd(-.1,.1),y:rnd(-.1,.1),z:rnd(-.1,.1)});
+  var COUNT=sphere.length+ring1.length+ring2.length+pl1.length+pl2.length;
   function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);
     W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
-    cx=W/2;cy=H*0.43;buildTargets();
-    var dust=Math.round(W*H/15000),N=targets.length+dust,prev=P;P=[];
-    for(var i=0;i<N;i++){var has=i<targets.length;
-      var sx=prev[i]?prev[i].x:rnd(0,W),sy=prev[i]?prev[i].y:rnd(0,H);
-      P.push({x:sx,y:sy,vx:0,vy:0,
-        tx:has?targets[i][0]:rnd(0,W),ty:has?targets[i][1]:rnd(0,H),
-        a:has?targets[i][2]:0.13,dust:!has,ph:Math.random()*6.28});}
+    cx=W/2;cy=H*0.42;SCALE=Math.min(W,H)*0.135;
+    var dust=Math.round(W*H/16000),N=COUNT+dust,prev=P;P=[];
+    for(var i=0;i<N;i++){var sx=prev[i]?prev[i].x:rnd(0,W),sy=prev[i]?prev[i].y:rnd(0,H);
+      P.push({x:sx,y:sy,vx:0,vy:0,dust:i>=COUNT,ph:Math.random()*6.28,bx:rnd(0,W),by:rnd(0,H)});}
+  }
+  function proj(q){
+    var ca=Math.cos(angY),sa=Math.sin(angY);
+    var x=q.x*ca+q.z*sa, z=-q.x*sa+q.z*ca, y=q.y;
+    var ct=Math.cos(TX),st=Math.sin(TX), y2=y*ct-z*st, z2=y*st+z*ct;
+    return [cx+x*SCALE, cy-y2*SCALE, z2];
+  }
+  var idx=0;
+  function put(tx,ty,al,sz){
+    var p=P[idx++]; if(!p)return;
+    var ax=(tx-p.x)*0.014, ay=(ty-p.y)*0.014;
+    var dx=p.x-mx,dy=p.y-my,d2=dx*dx+dy*dy,RAD=120;
+    if(d2<RAD*RAD){var d=Math.sqrt(d2)||1,f=(RAD-d)/RAD*4.2;ax+=dx/d*f;ay+=dy/d*f;}
+    p.vx=(p.vx+ax)*0.91; p.vy=(p.vy+ay)*0.91; p.x+=p.vx; p.y+=p.vy;
+    ctx.globalAlpha=al; ctx.fillRect(p.x,p.y,sz,sz);
   }
   function frame(ts){
     ctx.clearRect(0,0,W,H);
-    for(var i=0;i<P.length;i++){var p=P[i];var tx=p.tx,ty=p.ty;
-      if(p.dust){tx=p.tx+Math.cos(ts*0.0003+p.ph)*34;ty=p.ty+Math.sin(ts*0.0004+p.ph)*34;}
-      var ax=(tx-p.x)*0.02,ay=(ty-p.y)*0.02;
-      var dx=p.x-mx,dy=p.y-my,d2=dx*dx+dy*dy,RAD=130;
-      if(d2<RAD*RAD){var d=Math.sqrt(d2)||1;var f=(RAD-d)/RAD*6;ax+=dx/d*f;ay+=dy/d*f;}
-      p.vx=(p.vx+ax)*0.85;p.vy=(p.vy+ay)*0.85;p.x+=p.vx;p.y+=p.vy;
-      ctx.globalAlpha=p.a;ctx.fillStyle='#121214';
-      var s=p.dust?1:1.5;ctx.fillRect(p.x,p.y,s,s);
+    angY+=0.0042; phi1+=0.010; phi2-=0.0075;
+    ctx.fillStyle='#121214'; idx=0;
+    var i,q,dn;
+    for(i=0;i<sphere.length;i++){q=proj(sphere[i]);dn=(q[2]/2.1+1)/2;put(q[0],q[1],0.14+0.5*dn,q[2]>0?1.5:1.0);}
+    for(i=0;i<ring1.length;i++){q=proj(ring1[i]);dn=(q[2]/2.1+1)/2;put(q[0],q[1],0.10+0.4*dn,1.1);}
+    for(i=0;i<ring2.length;i++){q=proj(ring2[i]);dn=(q[2]/2.1+1)/2;put(q[0],q[1],0.10+0.4*dn,1.1);}
+    var c1=ringPt(R1,T1,phi1);
+    for(i=0;i<pl1.length;i++){q=proj({x:c1.x+pl1[i].x,y:c1.y+pl1[i].y,z:c1.z+pl1[i].z});put(q[0],q[1],0.92,1.7);}
+    var c2=ringPt(R2,T2,phi2);
+    for(i=0;i<pl2.length;i++){q=proj({x:c2.x+pl2[i].x,y:c2.y+pl2[i].y,z:c2.z+pl2[i].z});put(q[0],q[1],0.92,1.7);}
+    for(i=idx;i<P.length;i++){var p=P[i];
+      var tx=p.bx+Math.cos(ts*0.00026+p.ph)*38, ty=p.by+Math.sin(ts*0.00032+p.ph)*38;
+      var ax=(tx-p.x)*0.01, ay=(ty-p.y)*0.01;
+      var dx=p.x-mx,dy=p.y-my,d2=dx*dx+dy*dy;
+      if(d2<120*120){var d=Math.sqrt(d2)||1,f=(120-d)/120*3.4;ax+=dx/d*f;ay+=dy/d*f;}
+      p.vx=(p.vx+ax)*0.91;p.vy=(p.vy+ay)*0.91;p.x+=p.vx;p.y+=p.vy;
+      ctx.globalAlpha=0.11;ctx.fillRect(p.x,p.y,1,1);
     }
-    ctx.globalAlpha=1;requestAnimationFrame(frame);
+    ctx.globalAlpha=1; requestAnimationFrame(frame);
   }
   function move(e){var r=cv.getBoundingClientRect();var t=e.touches?e.touches[0]:e;mx=t.clientX-r.left;my=t.clientY-r.top;}
   function leave(){mx=-1e5;my=-1e5;}
