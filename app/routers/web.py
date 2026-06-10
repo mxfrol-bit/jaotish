@@ -242,7 +242,115 @@ def _spinner_page(pid: str, title: str, lead: str) -> str:
     return _page("Считаю…", body, head)
 
 
-# ---------------- лендинг ----------------
+# ---------------- лендинг с кинематографичной анимацией ----------------
+_STAGE_CSS = """
+.stage{position:relative;height:94vh;min-height:580px;overflow:hidden;
+ background:radial-gradient(120% 95% at 50% 32%,#171c2c 0%,#0b0d12 68%);}
+.sky{position:absolute;inset:0;width:100%;height:100%;display:block;}
+.stagenav{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
+ align-items:center;padding:20px 24px;z-index:2;}
+.brandw{color:#fff;font-weight:700;font-size:18px;text-decoration:none;}
+.brandw span{color:#8b93f8;}
+.stagenav>div a{color:rgba(255,255,255,.72);text-decoration:none;margin-left:20px;font-size:14px;}
+.stagehero{position:absolute;left:0;right:0;bottom:0;padding:64px 24px 58px;z-index:2;text-align:center;
+ background:linear-gradient(180deg,rgba(11,13,18,0),rgba(11,13,18,.80) 62%);}
+.bigh{color:#fff;font-size:clamp(30px,5.4vw,52px);font-weight:780;letter-spacing:-.025em;margin:0 0 12px;line-height:1.06;}
+.bigp{color:rgba(255,255,255,.82);font-size:clamp(15px,2.2vw,20px);margin:0 auto 24px;max-width:580px;}
+.cta2{display:inline-block;background:#fff;color:#0b0d12;padding:15px 32px;border-radius:12px;
+ font-weight:680;font-size:16px;text-decoration:none;}
+.cta2:hover{background:#e9ecf5;}
+.scrollhint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:rgba(255,255,255,.5);
+ font-size:12px;z-index:2;animation:bobh 1.8s ease-in-out infinite;}
+@keyframes bobh{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+"""
+
+_STAGE_HTML = """
+<section class=stage>
+  <canvas id=sky class=sky></canvas>
+  <div class=stagenav>
+    <a class=brandw href='/'>Матрица<span>.</span></a>
+    <div><a href='/proof'>Точность</a><a href='/about'>Метод</a></div>
+  </div>
+  <div class=stagehero>
+    <h1 class=bigh>Точная карта твоего характера</h1>
+    <p class=bigp>Положение светил в секунду твоего рождения — собирается в живую карту
+    и переводится на язык поведения.</p>
+    <a class=cta2 href='#form'>Построить мою карту</a>
+  </div>
+  <div class=scrollhint>↓ листай вниз</div>
+</section>
+"""
+
+# Vanilla Canvas: звёзды → колесо собирается → глифы планет влетают в дома → связи.
+# Глифы заданы юникод-эскейпами, чтобы не зависеть от кодировки при отдаче.
+_STAGE_JS = r"""
+(function(){
+  var cv=document.getElementById('sky'); if(!cv||!cv.getContext) return;
+  var ctx=cv.getContext('2d'), W,H,DPR,cx,cy,R,stars=[];
+  var SIGNS=['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
+  var PLN=['☉','☽','☿','♀','♂','♃','♄','♅','♆','♇'];
+  var TARG=[18,52,80,116,150,196,232,270,300,335];
+  var planets=PLN.map(function(g,i){return {g:g,a:TARG[i]*Math.PI/180,sx:Math.random(),sy:Math.random(),j:Math.random()*6.28};});
+  function resize(){
+    DPR=Math.min(window.devicePixelRatio||1,2);
+    W=cv.clientWidth;H=cv.clientHeight;
+    cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx=W/2;cy=H*0.45;R=Math.min(W,H*1.05)*0.33;
+    stars=[];var n=Math.round(W*H/9000);
+    for(var i=0;i<n;i++)stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.2+0.2,p:Math.random()*6.28,s:Math.random()*0.5+0.2});
+  }
+  function ease(x){return x<0.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;}
+  function xy(a,r){return [cx+Math.cos(a-Math.PI/2)*r, cy+Math.sin(a-Math.PI/2)*r];}
+  var t0=null;
+  function frame(ts){
+    if(t0==null)t0=ts; var T=ts-t0;
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<stars.length;i++){var s=stars[i];var tw=0.5+0.5*Math.sin(ts*0.001*s.s+s.p);
+      ctx.globalAlpha=0.22+0.5*tw;ctx.fillStyle='#cdd3e0';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.2832);ctx.fill();}
+    ctx.globalAlpha=1;
+    var rot=T*0.0000115*Math.PI*2;
+    ctx.strokeStyle='rgba(220,224,235,0.5)';ctx.lineWidth=1.2;
+    var ring=ease(Math.min(1,T/700));
+    ctx.beginPath();ctx.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+ring*6.2832);ctx.stroke();
+    var ring2=ease(Math.min(1,Math.max(0,(T-200)/700)));
+    ctx.strokeStyle='rgba(150,156,170,0.22)';ctx.lineWidth=0.8;
+    ctx.beginPath();ctx.arc(cx,cy,R*0.78,-Math.PI/2,-Math.PI/2+ring2*6.2832);ctx.stroke();
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    for(var i=0;i<12;i++){
+      var p=ease(Math.min(1,Math.max(0,(T-400-i*45)/520)));
+      if(p<=0)continue;
+      var ang=i*30*Math.PI/180+rot, a0=xy(ang,R*0.78), a1=xy(ang,R);
+      ctx.strokeStyle='rgba(150,156,170,'+(0.22*p)+')';ctx.lineWidth=0.7;
+      ctx.beginPath();ctx.moveTo(a0[0],a0[1]);ctx.lineTo(a1[0],a1[1]);ctx.stroke();
+      var g=xy((i*30+15)*Math.PI/180+rot,R*1.075);
+      ctx.globalAlpha=p;ctx.fillStyle='rgba(205,211,224,0.85)';ctx.font='15px serif';
+      ctx.fillText(SIGNS[i],g[0],g[1]);ctx.globalAlpha=1;
+    }
+    var rPl=R*0.6,pos=[];
+    for(var i=0;i<planets.length;i++){
+      var pl=planets[i], st=1000+i*90, p=ease(Math.min(1,Math.max(0,(T-st)/900)));
+      if(p<=0){pos[i]=null;continue;}
+      var tgt=xy(pl.a+rot,rPl), sx=pl.sx*W, sy=pl.sy*H;
+      var bob=p>0.98?Math.sin(ts*0.001+pl.j)*2:0;
+      var x=sx+(tgt[0]-sx)*p, y=sy+(tgt[1]-sy)*p+bob;
+      pos[i]=[x,y];
+      ctx.globalAlpha=p;ctx.shadowColor='rgba(130,140,235,0.7)';ctx.shadowBlur=14*p;
+      ctx.fillStyle='#f2f4fa';ctx.font='20px serif';ctx.fillText(pl.g,x,y);
+      ctx.shadowBlur=0;ctx.globalAlpha=1;
+    }
+    var al=ease(Math.min(1,Math.max(0,(T-2100)/1000)));
+    if(al>0){var pr=[[0,5],[1,7],[2,9],[3,6],[4,8]];
+      ctx.strokeStyle='rgba(130,140,235,'+(0.22*al)+')';ctx.lineWidth=0.7;
+      for(var k=0;k<pr.length;k++){var a=pos[pr[k][0]],b=pos[pr[k][1]];
+        if(a&&b){ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();}}}
+    requestAnimationFrame(frame);
+  }
+  window.addEventListener('resize',resize);
+  resize();requestAnimationFrame(frame);
+})();
+"""
+
+
 @router.get("/", response_class=HTMLResponse)
 def landing() -> str:
     opts = "".join(f"<option value='{k}'>{html.escape(v)}</option>" for k, v in _ANALYSIS_LABELS.items())
@@ -250,29 +358,15 @@ def landing() -> str:
         f"<div class=feat><div class=ic>{ic}</div><h3>{html.escape(t)}</h3><p>{html.escape(d)}</p></div>"
         for ic, t, d in _FEATURES
     )
-    body = f"""{_nav()}
+    content = f"""
     <div class=wrap>
-      <div class=hero>
-        <h1>Точная карта твоего характера — по небу в момент, когда ты родился</h1>
-        <p class=lead>Матрица вычисляет положение светил в секунду твоего рождения — до угловой
-        минуты — и переводит его в понятный портрет: сильные стороны, слепые зоны и сценарии,
-        которые повторяются в жизни.</p>
-        <a class=cta href='#form'>Построить мою карту</a>
-        <a class='cta ghost' href='/about'>Как это работает</a>
-        <div class=strip>
-          <span>🛰 <b>Астрономические эфемериды</b> — как в космической навигации</span>
-          <span>🧮 <b>Точность до угловой минуты</b></span>
-          <span>📊 Язык <b>поведенческой психологии</b></span>
-        </div>
-      </div>
-
       <div class=sectionhead>Что внутри</div>
       <div class=grid>{feats}</div>
 
       <div class=sectionhead>Как это работает</div>
       <div class=steps>
         <div class=step><div class=n>1</div><h3>Данные</h3><p>Дата, время и город рождения — точные параметры момента.</p></div>
-        <div class=step><div class=n>2</div><h3>Расчёт</h3><p>Алгоритм считает астрономические и числовые слои детерминированно.</p></div>
+        <div class=step><div class=n>2</div><h3>Расчёт</h3><p>Положение светил считается до угловой минуты, детерминированно.</p></div>
         <div class=step><div class=n>3</div><h3>Разбор</h3><p>Выводы — на языке поведения: сценарии, риски, что делать.</p></div>
       </div>
 
@@ -299,10 +393,11 @@ def landing() -> str:
         </form>
       </div>
 
-      <p class=foot>Матрица не ставит диагнозов и не предсказывает судьбу буквально.
-      Важные решения о здоровье, деньгах и отношениях вы принимаете сами.</p>
+      <p class=foot>Важные решения о здоровье, деньгах и отношениях вы принимаете сами.
+      · <a href='/proof'>Откуда точность →</a></p>
     </div>"""
-    return _page("Матрица — поведенческий профайлинг", body)
+    body = _STAGE_HTML + content + "<script>" + _STAGE_JS + "</script>"
+    return _page("Матрица — поведенческий профайлинг", body, "<style>" + _STAGE_CSS + "</style>")
 
 
 @router.get("/about", response_class=HTMLResponse)
