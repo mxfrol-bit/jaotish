@@ -290,12 +290,25 @@ _STAGE_JS = r"""
   function rnd(a,b){return a+Math.random()*(b-a);}
   function buildTargets(){
     targets=[];var R=Math.min(W,H)*0.31;
+    // зодиакальное кольцо
     for(var i=0;i<360;i+=2){var a=i*Math.PI/180;targets.push([cx+Math.cos(a)*R,cy+Math.sin(a)*R,0.9]);}
-    for(var i=0;i<360;i+=4){var a=i*Math.PI/180;targets.push([cx+Math.cos(a)*R*0.80,cy+Math.sin(a)*R*0.80,0.45]);}
-    for(var s=0;s<12;s++){var a=s*30*Math.PI/180;for(var t=0.80;t<=1.0001;t+=0.035){targets.push([cx+Math.cos(a)*R*t,cy+Math.sin(a)*R*t,0.55]);}}
+    for(var i=0;i<360;i+=4){var a=i*Math.PI/180;targets.push([cx+Math.cos(a)*R*0.80,cy+Math.sin(a)*R*0.80,0.4]);}
+    for(var s=0;s<12;s++){var a=s*30*Math.PI/180;for(var t=0.80;t<=1.0001;t+=0.04){targets.push([cx+Math.cos(a)*R*t,cy+Math.sin(a)*R*t,0.5]);}}
+    // планеты-кластеры на кольце
     var pa=[20,55,85,120,155,200,235,270,305,340];
     for(var k=0;k<pa.length;k++){var a=pa[k]*Math.PI/180;var bx=cx+Math.cos(a)*R*0.6,by=cy+Math.sin(a)*R*0.6;
-      for(var n=0;n<30;n++){var rr=Math.sqrt(Math.random())*11,ta=Math.random()*6.2832;targets.push([bx+Math.cos(ta)*rr,by+Math.sin(ta)*rr,1]);}}
+      for(var n=0;n<26;n++){var rr=Math.sqrt(Math.random())*10,ta=Math.random()*6.2832;targets.push([bx+Math.cos(ta)*rr,by+Math.sin(ta)*rr,0.95]);}}
+    // ЛУНА в центре — полумесяц из частиц (диск минус смещённый диск)
+    var Rm=R*0.6, ox=Rm*0.46;
+    for(var n=0;n<2200;n++){
+      var rx=rnd(-Rm,Rm), ry=rnd(-Rm,Rm);
+      var inMoon=rx*rx+ry*ry<=Rm*Rm;
+      var inCut=(rx-ox)*(rx-ox)+ry*ry<=(Rm*0.94)*(Rm*0.94);
+      if(inMoon&&!inCut){
+        var edge=Math.sqrt(rx*rx+ry*ry)/Rm;           // у края плотнее/темнее
+        targets.push([cx+rx,cy+ry, 0.55+0.4*edge]);
+      }
+    }
   }
   function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);
