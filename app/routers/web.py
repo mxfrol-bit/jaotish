@@ -10,6 +10,11 @@ import html
 import re
 import uuid
 from datetime import date
+from pathlib import Path
+
+# Премиальный лендинг, собранный скиллом web-artifacts-builder (React+Tailwind → один HTML).
+_LANDING_FILE = Path(__file__).resolve().parents[1] / "landing.html"
+_LANDING_HTML = _LANDING_FILE.read_text(encoding="utf-8") if _LANDING_FILE.exists() else ""
 
 from fastapi import APIRouter, BackgroundTasks, Form, Query
 from fastapi.responses import HTMLResponse, Response
@@ -99,13 +104,14 @@ _FEATURES = [
 ]
 
 _CSS = """
-:root{--ink:#15161a;--muted:#6b7280;--line:#e7e8ec;--bg:#ffffff;--soft:#f7f7f9;
- --accent:#1a1a1d;--accent2:#0a0a0c;}
+:root{--ink:#ece7d8;--muted:#8f8f8a;--line:rgba(255,255,255,.12);--bg:#0a0a0b;
+ --soft:rgba(255,255,255,.035);--accent:#ece7d8;--accent2:#ece7d8;}
 *{box-sizing:border-box;}
 html{scroll-behavior:smooth;}
 body{margin:0;background:var(--bg);color:var(--ink);
- font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+ font-family:'Space Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
  line-height:1.62;font-size:17px;-webkit-font-smoothing:antialiased;}
+h1,h2,.brand{font-family:'Fraunces',Georgia,'Times New Roman',serif;}
 a{color:var(--accent);text-decoration:none;}a:hover{text-decoration:underline;}
 .wrap{max-width:880px;margin:0 auto;padding:0 22px;}
 .nav{display:flex;align-items:center;justify-content:space-between;padding:20px 0;
@@ -116,37 +122,39 @@ a{color:var(--accent);text-decoration:none;}a:hover{text-decoration:underline;}
 .hero{padding:64px 0 26px;}
 h1{font-size:clamp(30px,5vw,46px);font-weight:780;letter-spacing:-.025em;margin:0 0 14px;line-height:1.08;}
 .lead{color:var(--muted);font-size:clamp(17px,2.4vw,21px);margin:0 0 26px;max-width:680px;}
-.cta{display:inline-block;background:var(--accent2);color:#fff;padding:14px 26px;border-radius:11px;
- font-weight:640;font-size:16px;}
-.cta:hover{background:#000;text-decoration:none;}
-.cta.ghost{background:#fff;color:var(--ink);border:1px solid var(--line);margin-left:10px;}
+.cta{display:inline-block;background:var(--accent2);color:#0a0a0b;padding:14px 26px;border-radius:0;
+ font-weight:600;font-size:14px;text-transform:uppercase;letter-spacing:.1em;}
+.cta:hover{background:#fff;text-decoration:none;}
+.cta.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);margin-left:10px;}
 .strip{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--muted);font-size:13.5px;
  padding:18px 0 8px;border-top:1px solid var(--line);margin-top:30px;}
 .strip b{color:var(--ink);font-weight:600;}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:26px 0;}
-.feat{border:1px solid var(--line);border-radius:14px;padding:20px;background:#fff;}
+.feat{border:1px solid var(--line);border-radius:0;padding:20px;background:var(--soft);}
 .feat .ic{font-size:24px;}.feat h3{font-size:17px;margin:8px 0 5px;}
 .feat p{color:var(--muted);font-size:14.5px;margin:0;}
 .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin:22px 0;}
 .step{padding:18px 20px;border-radius:14px;background:var(--soft);}
 .step .n{display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;
- background:var(--accent2);color:#fff;border-radius:50%;font-size:14px;font-weight:700;margin-bottom:8px;}
+ background:var(--accent2);color:#0a0a0b;border-radius:50%;font-size:14px;font-weight:700;margin-bottom:8px;}
 .step h3{font-size:16px;margin:4px 0 4px;}.step p{color:var(--muted);font-size:14px;margin:0;}
 .sectionhead{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
  margin:48px 0 6px;font-weight:650;}
 .formcard{border:1px solid var(--line);border-radius:16px;padding:26px;margin:14px 0 10px;}
 label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px;}
-input,select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
- font-size:16px;background:#fff;color:var(--ink);}
+input,select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:0;
+ font-size:16px;background:#121214;color:var(--ink);}
 input:focus,select:focus{outline:none;border-color:var(--accent);}
+input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5;}
 .row{display:flex;gap:14px;flex-wrap:wrap;}.row>div{flex:1;min-width:160px;}
-button{margin-top:22px;width:100%;padding:14px 18px;border:0;border-radius:11px;
- background:var(--accent2);color:#fff;font-size:16px;font-weight:640;cursor:pointer;}
-button:hover{background:#000;}
+button{margin-top:22px;width:100%;padding:15px 18px;border:0;border-radius:0;
+ background:var(--accent2);color:#0a0a0b;font-size:14px;font-weight:600;cursor:pointer;
+ text-transform:uppercase;letter-spacing:.1em;}
+button:hover{background:#fff;}
 .note{color:var(--muted);font-size:13px;margin-top:10px;}
 .tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0;}
-.tab{padding:9px 15px;border:1px solid var(--line);border-radius:999px;font-size:14px;color:var(--ink);}
-.tab.on{background:var(--accent2);color:#fff;border-color:var(--accent2);}
+.tab{padding:9px 15px;border:1px solid var(--line);border-radius:0;font-size:14px;color:var(--ink);}
+.tab.on{background:var(--accent2);color:#0a0a0b;border-color:var(--accent2);}
 .tab:hover{text-decoration:none;}
 .cred{background:var(--soft);border:1px solid var(--line);border-radius:13px;padding:16px 18px;
  color:var(--muted);font-size:14.5px;margin:18px 0;}
@@ -156,7 +164,8 @@ button:hover{background:#000;}
 .sec{border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin:16px 0;scroll-margin-top:18px;}
 .sec h2{font-size:20px;font-weight:680;margin:0 0 8px;letter-spacing:-.01em;}
 .sec p{margin:9px 0;}
-.chart{display:block;max-width:100%;border:1px solid var(--line);border-radius:16px;margin:16px 0;}
+.chart{display:block;max-width:100%;border:1px solid var(--line);border-radius:0;margin:16px 0;
+ filter:invert(1);}
 .planets{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:14px 0 8px;}
 .pl{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
 .glyph{font-size:24px;line-height:1.2;width:30px;text-align:center;color:var(--accent);flex:none;}
@@ -187,11 +196,20 @@ th{color:var(--muted);font-weight:600;}
 """
 
 
+_FONTS = (
+    "<link rel=preconnect href='https://fonts.googleapis.com'>"
+    "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
+    "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
+    "family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&"
+    "family=Space+Grotesk:wght@300;400;500;600&display=swap'>"
+)
+
+
 def _page(title: str, body: str, head_extra: str = "") -> str:
     return (
         f"<!doctype html><html lang=ru><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{html.escape(title)}</title><style>{_CSS}</style>{head_extra}</head>"
+        f"<title>{html.escape(title)}</title>{_FONTS}<style>{_CSS}</style>{head_extra}</head>"
         f"<body>{body}</body></html>"
     )
 
@@ -359,51 +377,11 @@ _STAGE_JS = r"""
 
 @router.get("/", response_class=HTMLResponse)
 def landing() -> str:
-    opts = "".join(f"<option value='{k}'>{html.escape(v)}</option>" for k, v in _ANALYSIS_LABELS.items())
-    feats = "".join(
-        f"<div class=feat><div class=ic>{ic}</div><h3>{html.escape(t)}</h3><p>{html.escape(d)}</p></div>"
-        for ic, t, d in _FEATURES
-    )
-    content = f"""
-    <div class=wrap>
-      <div class=sectionhead>Что внутри</div>
-      <div class=grid>{feats}</div>
-
-      <div class=sectionhead>Как это работает</div>
-      <div class=steps>
-        <div class=step><div class=n>1</div><h3>Данные</h3><p>Дата, время и город рождения — точные параметры момента.</p></div>
-        <div class=step><div class=n>2</div><h3>Расчёт</h3><p>Положение светил считается до угловой минуты, детерминированно.</p></div>
-        <div class=step><div class=n>3</div><h3>Разбор</h3><p>Выводы — на языке поведения: сценарии, риски, что делать.</p></div>
-      </div>
-
-      <div class=sectionhead id=form>Получить разбор</div>
-      <div class=formcard>
-        <div class=tabbar>
-          <span class='tab on'>Личность / период / деньги</span>
-          <a class=tab href='/compat'>Совместимость</a>
-          <a class=tab href='/event'>Сделка / событие</a>
-        </div>
-        <form method=post action='/report'>
-          <label>Имя</label>
-          <input name=name placeholder='Как тебя зовут' required>
-          <label>Дата рождения</label>
-          <input name=birth_date type=date required>
-          <div class=row>
-            <div><label>Время рождения (по желанию)</label><input name=birth_time placeholder='14:30'></div>
-            <div><label>Город рождения (по желанию)</label><input name=birth_place placeholder='Москва'></div>
-          </div>
-          <label>Что смотрим</label>
-          <select name=analysis_type>{opts}</select>
-          <button type=submit>Показать мой код</button>
-          <p class=note>Время и город нужны для более тонкого слоя — без них тоже работает.</p>
-        </form>
-      </div>
-
-      <p class=foot>Важные решения о здоровье, деньгах и отношениях вы принимаете сами.
-      · <a href='/proof'>Откуда точность →</a></p>
-    </div>"""
-    body = _STAGE_HTML + content + "<script>" + _STAGE_JS + "</script>"
-    return _page("Матрица — поведенческий профайлинг", body, "<style>" + _STAGE_CSS + "</style>")
+    # Премиальный лендинг (React+Tailwind, собран в один HTML). Форма постит на /report.
+    if _LANDING_HTML:
+        return _LANDING_HTML
+    return _page("Матрица", f"{_nav()}<div class=wrap><div class=hero><h1>Матрица</h1>"
+                 "<a class=cta href='/proof'>Узнать больше</a></div></div>")
 
 
 @router.get("/about", response_class=HTMLResponse)
