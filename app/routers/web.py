@@ -209,7 +209,7 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
     return (
         f"<!doctype html><html lang=ru><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{html.escape(title)}</title>{_FONTS}<style>{_CSS}</style>{head_extra}</head>"
+        f"<title>{html.escape(title)}</title>{_FONTS}<style>{_CSS}{_HERO_CSS}</style>{head_extra}</head>"
         f"<body>{body}</body></html>"
     )
 
@@ -220,6 +220,55 @@ def _nav() -> str:
         "<div class=navlinks><a href='/compat'>Совместимость</a>"
         "<a href='/event'>Сделка</a><a href='/proof'>Точность</a>"
         "<a href='/about'>Как это работает</a></div></div></div>"
+    )
+
+
+# Кинематографичная тёмная шапка с живым звёздным полем — единый вау-стиль для всех страниц.
+_HERO_CSS = (
+    ".chero{position:relative;overflow:hidden;border-bottom:1px solid var(--line);"
+    "min-height:44vh;display:flex;align-items:flex-end;}"
+    ".chero canvas{position:absolute;inset:0;width:100%;height:100%;}"
+    ".chero .inner{position:relative;z-index:2;max-width:880px;margin:0 auto;width:100%;padding:0 22px 46px;}"
+    ".chero .kicker{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);margin:0 0 14px;}"
+    ".chero h1{font-size:clamp(30px,6.4vw,60px);margin:0;line-height:1.0;}"
+    ".chero .sub{color:var(--muted);font-size:clamp(15px,2vw,18px);margin:14px 0 0;max-width:560px;}"
+)
+
+_STARFIELD_JS = r"""
+(function(){
+  var cv=document.getElementById('sky'); if(!cv||!cv.getContext) return;
+  var ctx=cv.getContext('2d'),W,H,DPR,pts=[],mx=-1e5,my=-1e5;
+  function build(){
+    DPR=Math.min(window.devicePixelRatio||1,2);W=cv.clientWidth;H=cv.clientHeight;
+    cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    var n=Math.round(W*H/6500);pts=[];
+    for(var i=0;i<n;i++)pts.push({x:Math.random()*W,y:Math.random()*H,
+      vx:(Math.random()-.5)*.14,vy:(Math.random()-.5)*.14,r:Math.random()*1.3+.3,a:Math.random()*.5+.18});
+  }
+  function frame(){
+    ctx.clearRect(0,0,W,H);ctx.fillStyle='#ece7d8';
+    for(var i=0;i<pts.length;i++){var p=pts[i];p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x+=W;if(p.x>W)p.x-=W;if(p.y<0)p.y+=H;if(p.y>H)p.y-=H;
+      var dx=p.x-mx,dy=p.y-my,d2=dx*dx+dy*dy,rr=p.r,al=p.a;
+      if(d2<16000){var k=(16000-d2)/16000;rr+=k*1.8;al+=k*.4;}
+      ctx.globalAlpha=al;ctx.beginPath();ctx.arc(p.x,p.y,rr,0,6.2832);ctx.fill();}
+    ctx.globalAlpha=1;requestAnimationFrame(frame);
+  }
+  cv.addEventListener('mousemove',function(e){var r=cv.getBoundingClientRect();mx=e.clientX-r.left;my=e.clientY-r.top;});
+  cv.addEventListener('mouseleave',function(){mx=-1e5;my=-1e5;});
+  window.addEventListener('resize',build);build();requestAnimationFrame(frame);
+})();
+"""
+
+
+def _hero(title: str, kicker: str = "", sub: str = "") -> str:
+    """Тёмная шапка с анимированным звёздным полем + крупным засечным заголовком."""
+    k = f"<p class=kicker>{html.escape(kicker)}</p>" if kicker else ""
+    s = f"<p class=sub>{html.escape(sub)}</p>" if sub else ""
+    return (
+        "<section class=chero><canvas id=sky></canvas>"
+        f"<div class=inner>{k}<h1>{title}</h1>{s}</div></section>"
+        "<script>" + _STARFIELD_JS + "</script>"
     )
 
 
@@ -403,8 +452,8 @@ def landing() -> str:
 
 @router.get("/about", response_class=HTMLResponse)
 def about() -> str:
-    body = (f"{_nav()}<div class=wrap><div class=hero><h1>Как это работает</h1></div>"
-            f"<div class=sec>{_md_to_html(METHOD_BASIS)}</div>"
+    body = (f"{_nav()}{_hero('Как это работает', 'Метод', 'На стыке точного расчёта и поведенческой психологии.')}"
+            f"<div class=wrap><div class=sec>{_md_to_html(METHOD_BASIS)}</div>"
             "<p class=foot><a href='/proof'>Доказательство точности →</a> · "
             "<a href='/#form'>к разбору</a></p></div>")
     return _page("Как это работает · Матрица", body)
@@ -416,20 +465,17 @@ def proof() -> str:
     geo = {"lat": 51.4769, "lon": 0.0, "timezone": "UTC"}  # Гринвич, эпоха J2000
     sample = {"calculation_modules": {"western_astrology": astrology.western(date(2000, 1, 1), "12:00", geo)}}
     table = _positions_html(sample)
-    body = f"""{_nav()}
+    body = f"""{_nav()}{_hero('Откуда точность', 'Доказательство', 'Те же эфемериды, что в профессиональной астрономии и навигации аппаратов.')}
     <div class=wrap>
-      <div class=hero>
-        <h1>Откуда точность</h1>
-        <p class=lead>Положения светил считает <b>Swiss Ephemeris</b> (Astrodienst) на базе
-        <b>NASA JPL DE431</b> — тех же эфемерид, что используют в профессиональной астрономии
-        и расчёте траекторий космических аппаратов.</p>
-        <div class=strip>
-          <span>🛰 <b>NASA JPL DE431</b></span>
-          <span>🧮 <b>Детерминированно</b> — одна дата всегда даёт один результат</span>
-          <span>🎯 <b>Точность до угловой минуты</b></span>
-        </div>
+      <div class=strip>
+        <span><b>NASA JPL DE431</b></span>
+        <span><b>Детерминированно</b> — одна дата всегда даёт один результат</span>
+        <span><b>Точность до угловой минуты</b></span>
       </div>
       <div class=sec>
+        <p>Положения светил считает <b>Swiss Ephemeris</b> (Astrodienst) на базе
+        <b>NASA JPL DE431</b> — тех же эфемерид, что используют в профессиональной астрономии
+        и расчёте траекторий космических аппаратов.</p>
         <h2>Что это значит на практике</h2>
         <p>Это не «приблизительный гороскоп». Это воспроизводимый астрономический расчёт:
         мы берём дату, время и координаты — и получаем положение каждого светила с точностью
@@ -488,9 +534,8 @@ def report(
 # ---------------- совместимость ----------------
 @router.get("/compat", response_class=HTMLResponse)
 def compat_form() -> str:
-    body = f"""{_nav()}
-    <div class=wrap>
-      <div class=sectionhead id=form>Совместимость — резонанс двух кодов</div>
+    body = f"""{_nav()}{_hero('Совместимость', 'Резонанс двух кодов', 'Где вы усиливаете и где триггерите друг друга — без приговора «вместе/нет».')}
+    <div class=wrap id=form>
       <div class=formcard>
         <div class=tabbar>
           <a class=tab href='/#form'>Личность / период / деньги</a>
@@ -556,9 +601,8 @@ def compat_run(
 # ---------------- сделка / событие ----------------
 @router.get("/event", response_class=HTMLResponse)
 def event_form() -> str:
-    body = f"""{_nav()}
-    <div class=wrap>
-      <div class=sectionhead id=form>Сделка / событие — стоит ли в эту дату</div>
+    body = f"""{_nav()}{_hero('Сделка / событие', 'Электив на дату', 'Стоит ли входить в конкретную дату: что она включает у тебя.')}
+    <div class=wrap id=form>
       <div class=formcard>
         <div class=tabbar>
           <a class=tab href='/#form'>Личность / период / деньги</a>
@@ -653,9 +697,8 @@ def result(pid: str) -> str:
     advanced = (f"<details><summary>🔬 Полный технический расчёт</summary>"
                 f"{_md_to_html(tech)}</details>") if tech else ""
     positions = _positions_html(data)
-    body = f"""{_nav()}
+    body = f"""{_nav()}{_hero(title, 'Твой разбор')}
     <div class=wrap>
-      <div class=hero><h1>{title}</h1></div>
       <div class=cred>{html.escape(CREDIBILITY)}</div>
       {f'<p class=summary>{summary}</p>' if summary else ''}
       <img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>
@@ -728,5 +771,5 @@ def admin(token: str = Query("")) -> str:
                    f"<td>{r.get('telegram_id') or ''}</td></tr>")
     table = ("<table><tr><th>Когда</th><th>Тип</th><th>Где</th><th>Сообщение</th><th>TG</th></tr>"
              + ("".join(trs) or "<tr><td colspan=5 class=note>Пока чисто — ошибок нет.</td></tr>") + "</table>")
-    body = f"{_nav()}<div class=wrap><div class=hero><h1>Админка · баги</h1></div><div>{chips}</div>{table}<p class=foot>Последние 150 записей.</p></div>"
+    body = f"{_nav()}{_hero('Админка · баги', 'Мониторинг')}<div class=wrap><div>{chips}</div>{table}<p class=foot>Последние 150 записей.</p></div>"
     return _page("Админка", body)
