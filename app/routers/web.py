@@ -104,8 +104,9 @@ _FEATURES = [
 ]
 
 _CSS = """
-:root{--ink:#ece7d8;--muted:#8f8f8a;--line:rgba(255,255,255,.12);--bg:#0a0a0b;
- --soft:rgba(255,255,255,.035);--accent:#ece7d8;--accent2:#ece7d8;}
+:root{--ink:#ece7d8;--muted:#8f8f8a;--line:rgba(255,255,255,.12);--bg:#08090c;
+ --soft:rgba(255,255,255,.035);--accent:#ece7d8;--accent2:#ece7d8;
+ --ease:cubic-bezier(.22,.61,.36,1);}
 *{box-sizing:border-box;}
 html{scroll-behavior:smooth;}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -201,7 +202,44 @@ _FONTS = (
     "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
     "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
     "family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&"
-    "family=Space+Grotesk:wght@300;400;500;600&display=swap'>"
+    "family=Space+Grotesk:wght@300;400;500;600&"
+    "family=Space+Mono:wght@400;700&display=swap'>"
+)
+
+
+# Слой вкуса/движения (design-taste): mono для координат, кастомный ease, transform-only
+# микровзаимодействия, scroll-reveal, prefers-reduced-motion.
+_POLISH_CSS = (
+    ".kicker,.navlinks a,.toc a,.stat,.lstatus,.plpos,.house,.strip,.foot,.sectionhead"
+    "{font-family:'Space Mono',ui-monospace,'SFMono-Regular',monospace;}"
+    "a,button,.cta,.btnlink,.tab{transition:transform .18s var(--ease),background-color .18s var(--ease),"
+    "border-color .18s var(--ease),color .18s var(--ease);}"
+    ".cta:hover,button:hover,.btnlink:hover{transform:translateY(-1px);}"
+    ".cta:active,button:active,.btnlink:active{transform:translateY(0);}"
+    ".feat{transition:transform .22s var(--ease),border-color .22s var(--ease);}"
+    ".feat:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.24);}"
+    ".pl{transition:transform .2s var(--ease),border-color .2s var(--ease);}"
+    ".pl:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.24);}"
+    ".toc a:hover{transform:translateY(-1px);}"
+    "a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{"
+    "outline:2px solid var(--accent);outline-offset:2px;}"
+    ".reveal-init{opacity:0;transform:translateY(16px);}"
+    ".reveal-in{opacity:1;transform:none;transition:opacity .6s var(--ease),transform .6s var(--ease);}"
+    "@media (prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important;}"
+    "a,button,.cta,.btnlink,.feat,.pl{transition:none!important;transform:none!important;}"
+    ".reveal-init{opacity:1!important;transform:none!important;}}"
+)
+
+_REVEAL_JS = (
+    "<script>(function(){"
+    "if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;"
+    "if(!('IntersectionObserver' in window))return;"
+    "var els=document.querySelectorAll('.sec,.feat,.step,.pl');if(!els.length)return;"
+    "els.forEach(function(el,i){el.classList.add('reveal-init');el.style.transitionDelay=((i%6)*40)+'ms';});"
+    "var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){"
+    "e.target.classList.add('reveal-in');e.target.classList.remove('reveal-init');io.unobserve(e.target);}});},"
+    "{rootMargin:'0px 0px -7% 0px',threshold:0.08});"
+    "els.forEach(function(el){io.observe(el);});})();</script>"
 )
 
 
@@ -209,8 +247,9 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
     return (
         f"<!doctype html><html lang=ru><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{html.escape(title)}</title>{_FONTS}<style>{_CSS}{_HERO_CSS}</style>{head_extra}</head>"
-        f"<body>{body}</body></html>"
+        f"<title>{html.escape(title)}</title>{_FONTS}"
+        f"<style>{_CSS}{_HERO_CSS}{_POLISH_CSS}</style>{head_extra}</head>"
+        f"<body>{body}{_REVEAL_JS}</body></html>"
     )
 
 
@@ -237,6 +276,7 @@ _HERO_CSS = (
 _STARFIELD_JS = r"""
 (function(){
   var cv=document.getElementById('sky'); if(!cv||!cv.getContext) return;
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   var ctx=cv.getContext('2d'),W,H,DPR,pts=[],mx=-1e5,my=-1e5;
   function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);W=cv.clientWidth;H=cv.clientHeight;
@@ -370,6 +410,7 @@ _STAGE_HTML = """
 _STAGE_JS = r"""
 (function(){
   var cv=document.getElementById('sky'); if(!cv||!cv.getContext) return;
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   var ctx=cv.getContext('2d'), W,H,DPR,cx,cy,SCALE,P=[],mx=-1e5,my=-1e5;
   var TX=0.42, angY=0, phi1=0, phi2=Math.PI;
   var R1=1.55,T1=0.55,R2=2.05,T2=-0.62;
@@ -694,7 +735,7 @@ def result(pid: str) -> str:
     summary = html.escape((rep.get("short_summary") or "").strip())
     toc_html, cards = _render_sections(rep.get("full_report") or "")
     tech = rep.get("tech_methods") or ""
-    advanced = (f"<details><summary>🔬 Полный технический расчёт</summary>"
+    advanced = (f"<details><summary>Полный технический расчёт</summary>"
                 f"{_md_to_html(tech)}</details>") if tech else ""
     positions = _positions_html(data)
     body = f"""{_nav()}{_hero(title, 'Твой разбор')}
@@ -704,9 +745,9 @@ def result(pid: str) -> str:
       <img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>
       {positions}
       <div class=actions>
-        <a class=btnlink href='/voice/{pid}.mp3'>🔊 Слушать разбор</a>
-        <a class=btnlink href='/'>＋ Новый разбор</a>
-        <a class=btnlink href='/compat'>❤️ Совместимость</a>
+        <a class=btnlink href='/voice/{pid}.mp3'>Слушать разбор</a>
+        <a class=btnlink href='/'>Новый разбор</a>
+        <a class=btnlink href='/compat'>Совместимость</a>
       </div>
       {toc_html}
       {cards}
