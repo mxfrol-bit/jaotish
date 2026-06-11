@@ -245,18 +245,35 @@ def _md_to_html(md: str) -> str:
 
 
 def _spinner_page(pid: str, title: str, lead: str) -> str:
+    """Экран ожидания = вау-фон: из точек собирается глобус-планета, статус без смайликов."""
     import json as _json
-    msgs = _json.dumps(LOADING_MESSAGES, ensure_ascii=False)
-    body = (
-        f"{_nav()}<div class=wrap><div class=hero><h1>{html.escape(title)}</h1>"
-        f"<div class=spinner></div>"
-        f"<p id=ld class=lead>{html.escape(lead)}</p></div></div>"
-        f"<script>const M={msgs};let i=Math.floor(Math.random()*M.length);"
-        "const e=document.getElementById('ld');"
-        "function t(){e.textContent=M[i%M.length];i++;}t();setInterval(t,1500);</script>"
+    # убираем эмодзи из статусов — оставляем чистый текст
+    clean = [re.sub(r"^[^0-9A-Za-zА-Яа-яЁё]+", "", m).strip() for m in LOADING_MESSAGES]
+    msgs = _json.dumps(clean, ensure_ascii=False)
+    css = (
+        "#sky{position:fixed;inset:0;width:100%;height:100%;cursor:crosshair;}"
+        ".lbrand{position:fixed;top:22px;left:24px;z-index:3;font-family:Fraunces,serif;"
+        "font-size:18px;color:#ece7d8;text-decoration:none;}"
+        ".loverlay{position:fixed;left:0;right:0;bottom:0;z-index:2;pointer-events:none;"
+        "padding:0 24px 13vh;text-align:center;}"
+        ".ltitle{font-family:Fraunces,serif;font-weight:500;font-size:clamp(24px,4.6vw,44px);"
+        "color:#ece7d8;margin:0 0 18px;letter-spacing:-.01em;}"
+        ".lstatus{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:#8f8f8a;"
+        "min-height:1.4em;transition:opacity .4s;}"
     )
-    # Перезагрузка опрашивает результат; JS крутит статусы между перезагрузками.
-    head = f"<meta http-equiv='refresh' content='6;url=/r/{pid}'>"
+    body = (
+        "<canvas id=sky></canvas>"
+        "<a class=lbrand href='/'>Матрица</a>"
+        "<div class=loverlay><h1 class=ltitle>" + html.escape(title) + "</h1>"
+        "<div id=ld class=lstatus></div></div>"
+        "<script>" + _STAGE_JS + "</script>"
+        "<script>(function(){var M=" + msgs + ",i=Math.floor(Math.random()*M.length),"
+        "e=document.getElementById('ld');function t(){e.style.opacity=0;"
+        "setTimeout(function(){e.textContent=M[i%M.length];i++;e.style.opacity=1;},260);}"
+        "t();setInterval(t,1900);})();</script>"
+    )
+    # globe успевает собраться до перезагрузки, которая опрашивает результат.
+    head = "<meta http-equiv='refresh' content='8;url=/r/" + pid + "'><style>" + css + "</style>"
     return _page("Считаю…", body, head)
 
 
