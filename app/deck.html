@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>МАТРИЦА — Поведенческий профайлинг</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ TOKENS ============ */
+:root{
+  --bg:#060606;
+  --bg-2:#0b0b0b;
+  --ink:#f6f6f6;
+  --ink-2:#d8d8d8;
+  --muted:#a4a4a4;
+  --faint:#7a7a7a;
+  --line:rgba(255,255,255,.15);
+  --line-2:rgba(255,255,255,.09);
+  --soft:rgba(255,255,255,.05);
+  --violet:#999999;
+  --violet-deep:#6f6f6f;
+  --blue:#8a8a8a;
+  --gold:#c6c6c6;
+  --grad:linear-gradient(128deg,#8a8a8a 0%,#8c8c8c 54%,#b4b4b4 100%);
+  --grad-gold:linear-gradient(120deg,#c6c6c6 0%,#b4b4b4 120%);
+  --glass:rgba(255,255,255,.05);
+  --glass-2:rgba(255,255,255,.08);
+  --r:18px; --r-lg:26px; --r-sm:12px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --ease-ios:cubic-bezier(.32,.72,0,1);
+  --font-display:'Bricolage Grotesque','Space Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --font-body:'Inter',system-ui,-apple-system,sans-serif;
+  --maxw:1180px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{overflow-x:clip;scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);
+  color:var(--ink-2);
+  font-family:var(--font-body);
+  font-size:17px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:clip;
+  position:relative;
+}
+
+/* ============ AMBIENT BACKGROUND ============ */
+.bg-fx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.glow{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;will-change:transform}
+.glow.g1{width:640px;height:640px;top:-180px;left:-120px;background:radial-gradient(circle,#8a8a8a66,transparent 70%);animation:drift1 26s var(--ease) infinite alternate}
+.glow.g2{width:720px;height:720px;top:30%;right:-220px;background:radial-gradient(circle,#8c8c8c55,transparent 70%);animation:drift2 32s var(--ease) infinite alternate}
+.glow.g3{width:520px;height:520px;bottom:-160px;left:30%;background:radial-gradient(circle,#c6c6c62e,transparent 70%);animation:drift3 30s var(--ease) infinite alternate}
+@keyframes drift1{to{transform:translate(80px,60px)}}
+@keyframes drift2{to{transform:translate(-70px,40px)}}
+@keyframes drift3{to{transform:translate(50px,-50px)}}
+#stars{position:fixed;inset:0;z-index:1;pointer-events:none}
+.grain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.04;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.mesh{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;
+  background-image:linear-gradient(var(--line-2) 1px,transparent 1px),linear-gradient(90deg,var(--line-2) 1px,transparent 1px);
+  background-size:64px 64px;
+  -webkit-mask-image:radial-gradient(ellipse 70% 55% at 50% 0%,#000000,transparent 75%);
+  mask-image:radial-gradient(ellipse 70% 55% at 50% 0%,#000000,transparent 75%)}
+
+/* ============ SCROLL PROGRESS + NAV ============ */
+.progress{position:fixed;top:0;left:0;height:2px;width:100%;transform:scaleX(0);transform-origin:left;z-index:90;background:var(--grad)}
+.dotnav{position:fixed;right:26px;top:50%;transform:translateY(-50%);z-index:80;display:flex;flex-direction:column;gap:11px}
+.dotnav a{width:9px;height:9px;border-radius:50%;border:1px solid var(--line);background:transparent;transition:all .35s var(--ease);position:relative}
+.dotnav a:hover{border-color:var(--violet)}
+.dotnav a.on{background:var(--grad);border-color:transparent;transform:scale(1.25)}
+.dotnav a span{position:absolute;right:18px;top:50%;transform:translateY(-50%) translateX(6px);opacity:0;white-space:nowrap;font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);pointer-events:none;transition:.3s var(--ease)}
+.dotnav a:hover span{opacity:1;transform:translateY(-50%) translateX(0)}
+
+/* ============ HEADER ============ */
+.hdr{position:fixed;top:0;left:0;right:0;z-index:85;display:flex;align-items:center;justify-content:space-between;padding:18px clamp(20px,4vw,46px);backdrop-filter:blur(12px);background:linear-gradient(180deg,rgba(6,6,6,.7),transparent);border-bottom:1px solid transparent;transition:border-color .4s}
+.hdr.scrolled{border-bottom:1px solid var(--line-2);background:rgba(6,6,6,.82)}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:.02em;color:var(--ink)}
+.brand .mark{width:22px;height:22px;flex:none}
+.brand b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hdr-right{display:flex;align-items:center;gap:20px}
+.hdr-tag{font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.btn-print{font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:8px 15px;cursor:pointer;transition:.3s var(--ease)}
+.btn-print:hover{border-color:var(--violet);color:#ffffff}
+
+/* ============ LAYOUT ============ */
+.wrap{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,4vw,40px);position:relative;z-index:5}
+section{position:relative;z-index:5;min-height:100vh;display:flex;align-items:center;padding:112px 0 84px}
+section.compact{min-height:auto;padding:96px 0}
+.eyebrow{display:inline-flex;align-items:center;gap:11px;font-family:var(--font-mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--violet);margin-bottom:26px}
+.eyebrow::before{content:"";width:24px;height:2px;background:var(--grad);border-radius:2px}
+.eyebrow .num{color:var(--faint)}
+h1,h2,h3{font-family:var(--font-display);color:var(--ink);font-weight:800;letter-spacing:-.028em;line-height:1.04}
+h2.title{font-size:clamp(33px,5vw,60px);margin-bottom:22px;max-width:18ch}
+h3{font-size:clamp(20px,2.4vw,26px);letter-spacing:-.02em}
+.lead{font-size:clamp(17px,1.7vw,20px);color:var(--ink-2);max-width:62ch;line-height:1.62}
+.hl{position:relative;z-index:0;color:#ffffff;white-space:nowrap}
+@media(max-width:600px){.hl{white-space:normal}}
+.hl::after{content:"";position:absolute;left:-3%;right:-3%;bottom:.04em;height:.34em;border-radius:5px;background:var(--grad);opacity:.55;z-index:-1}
+.grad-txt{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.gold-txt{background:var(--grad-gold);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* ============ GLASS CARD ============ */
+.card{background:var(--glass);border:1px solid var(--line);border-radius:var(--r-lg);backdrop-filter:blur(10px);padding:30px;position:relative;transition:transform .5s var(--ease),border-color .5s var(--ease)}
+.card.lift:hover{transform:translateY(-5px);border-color:rgba(153,153,153,.45)}
+.card .idx{font-family:var(--font-mono);font-size:12px;color:var(--faint);letter-spacing:.1em}
+.card h3{margin:14px 0 10px}
+.card p{font-size:15px;color:var(--ink-2);line-height:1.58}
+.eg{font-size:14px;color:var(--muted)}
+
+/* ============ BADGES ============ */
+.badge{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:5px 11px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.badge--high{color:#ababab;border-color:rgba(138,138,138,.4);background:rgba(138,138,138,.08)}
+.badge--mid{color:#a8a8a8;border-color:rgba(140,140,140,.4);background:rgba(140,140,140,.08)}
+.badge--sym{color:#c6c6c6;border-color:rgba(198,198,198,.38);background:rgba(198,198,198,.07)}
+.badge--exp{color:#a5a5a5;border-color:var(--line);background:var(--soft)}
+
+/* ============ GRID ============ */
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.auto{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+
+/* ============ REVEAL (progressive enhancement: hidden only when JS adds .anim) ============ */
+.rv{transition:opacity .8s var(--ease),transform .8s var(--ease),filter .8s var(--ease)}
+body.anim .rv{opacity:0;transform:translateY(26px);filter:blur(6px)}
+body.anim .rv.in{opacity:1;transform:none;filter:none}
+.rv.d1{transition-delay:.08s}.rv.d2{transition-delay:.16s}.rv.d3{transition-delay:.24s}.rv.d4{transition-delay:.32s}.rv.d5{transition-delay:.4s}.rv.d6{transition-delay:.48s}
+
+/* ============ HERO ============ */
+#hero{min-height:100vh;overflow:hidden}
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;width:100%}
+.hero-names{display:flex;flex-wrap:wrap;gap:8px;margin:30px 0 0}
+.chip{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:var(--soft)}
+.chip.work{color:var(--violet);border-color:rgba(153,153,153,.4)}
+.hero-cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:36px}
+.btn{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;padding:14px 24px;border-radius:999px;cursor:pointer;text-decoration:none;transition:.35s var(--ease);position:relative;overflow:hidden}
+.btn-primary{color:#0b0b0b;background:var(--grad);border:1px solid transparent;font-weight:600}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 40px rgba(111,111,111,.4)}
+.btn-ghost{color:var(--ink);background:var(--glass);border:1px solid var(--line)}
+.btn-ghost:hover{border-color:var(--violet);transform:translateY(-2px)}
+.h1xl{font-size:clamp(40px,6.6vw,76px);letter-spacing:-.032em;margin:8px 0 24px}
+.hero-stats{display:flex;gap:34px;margin-top:46px;flex-wrap:wrap}
+.hstat .n{font-family:var(--font-display);font-weight:800;font-size:30px;letter-spacing:-.02em}
+.hstat .l{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+/* AURA CORE */
+.aura{position:relative;width:min(440px,80vw);aspect-ratio:1;margin:0 auto;display:grid;place-items:center}
+.aura::before{content:"";position:absolute;inset:8%;border-radius:50%;background:radial-gradient(circle at 50% 45%,rgba(140,140,140,.4),rgba(138,138,138,.12) 45%,transparent 70%);filter:blur(14px)}
+.ring{position:absolute;border-radius:50%;inset:0}
+.ring.a{border:1px solid rgba(153,153,153,.32);inset:2%;animation:spin 34s linear infinite}
+.ring.b{inset:13%;background:conic-gradient(from 0deg,transparent,rgba(138,138,138,.5),transparent 38%,transparent 60%,rgba(198,198,198,.4),transparent 92%);-webkit-mask:radial-gradient(circle,transparent 61%,#000000 62%);mask:radial-gradient(circle,transparent 61%,#000000 62%);animation:spin 22s linear infinite reverse}
+.ring.c{inset:25%;border:1px dashed rgba(255,255,255,.16);animation:spin 44s linear infinite}
+.core{position:relative;width:38%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 38% 32%,#ffffff,#b4b4b4 30%,#6f6f6f 64%,#353535 100%);box-shadow:0 0 60px rgba(111,111,111,.6),inset 0 0 30px rgba(255,255,255,.3);animation:pulse 6s var(--ease) infinite}
+.core::after{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 65% 70%,rgba(138,138,138,.5),transparent 55%);mix-blend-mode:screen}
+.orbit{position:absolute;inset:0;animation:spin 16s linear infinite}
+.orbit i{position:absolute;top:50%;left:-1px;width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 14px var(--gold);transform:translateY(-50%)}
+.orbit.o2{inset:8%;animation-duration:26s;animation-direction:reverse}
+.orbit.o2 i{background:var(--blue);box-shadow:0 0 14px var(--blue);width:7px;height:7px}
+.aura-tags{position:absolute;inset:0;pointer-events:none}
+.aura-tags span{position:absolute;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);background:rgba(11,11,11,.7);border:1px solid var(--line);border-radius:999px;padding:4px 9px;backdrop-filter:blur(6px)}
+.aura-tags .t1{top:6%;left:50%;transform:translateX(-50%)}
+.aura-tags .t2{top:42%;right:-6%}
+.aura-tags .t3{bottom:8%;left:-2%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+
+/* ============ FORMULA / PIPELINE ============ */
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin-top:14px}
+.flow .node{flex:1;min-width:150px;background:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:20px 18px;position:relative}
+.flow .node .k{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--violet);margin-bottom:8px}
+.flow .node .v{font-family:var(--font-display);font-weight:700;font-size:17px;color:var(--ink);letter-spacing:-.01em}
+.flow .arr{display:flex;align-items:center;padding:0 4px;color:var(--faint);font-size:20px}
+
+/* ============ ARCH LAYERS ============ */
+.layer{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--glass);padding:30px clamp(22px,3vw,38px);position:relative;overflow:hidden}
+.layer+.layer{margin-top:16px}
+.layer .lnum{font-family:var(--font-display);font-weight:800;font-size:52px;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1;opacity:.9}
+.layer .lk{font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--violet);margin-bottom:8px}
+.layer h3{margin-bottom:8px}
+.layer .tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.layer .tags span{font-family:var(--font-mono);font-size:11px;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;background:var(--soft)}
+.layer .edge{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--grad);opacity:.7}
+.layer-link{display:flex;justify-content:center;padding:4px 0}
+.layer-link svg{color:var(--faint)}
+
+/* ============ METHODS TABLE/GRID ============ */
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0 28px}
+.src{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.scard{background:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:20px;transition:transform .45s var(--ease),border-color .45s var(--ease)}
+.scard:hover{transform:translateY(-4px);border-color:rgba(153,153,153,.4)}
+.scard .top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.scard .top .i{font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+.scard h4{font-family:var(--font-display);font-weight:700;font-size:17px;color:var(--ink);letter-spacing:-.01em;margin-bottom:10px}
+.scard dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px}
+.scard dt{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding-top:2px}
+.scard dd{color:var(--ink-2);line-height:1.4}
+
+/* ============ FOOTER / DISCLAIMER ============ */
+.disc{border:1px solid var(--line);border-radius:var(--r);background:var(--soft);padding:18px 22px;font-size:13.5px;color:var(--muted);display:flex;gap:13px;align-items:flex-start;margin-top:26px}
+.disc svg{flex:none;color:var(--gold);margin-top:2px}
+
+/* ============ APP WINDOW MOCKUP ============ */
+.appwin{border:1px solid var(--line);border-radius:var(--r-lg);background:linear-gradient(180deg,rgba(17,17,17,.92),rgba(9,9,9,.92));overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.5)}
+.appbar{display:flex;align-items:center;gap:8px;padding:13px 18px;border-bottom:1px solid var(--line-2);background:rgba(255,255,255,.02)}
+.appbar .d{width:11px;height:11px;border-radius:50%;background:#2b2b2b}
+.appbar .d:first-child{background:#8a8a8a}
+.appbar .ttl{margin-left:12px;font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--muted)}
+.appbody{padding:clamp(18px,2.6vw,28px)}
+.dash-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:18px;margin-bottom:24px}
+.avatar{display:flex;align-items:center;gap:14px}
+.avatar .ring2{width:54px;height:54px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#ffffff,#b4b4b4 35%,#6f6f6f 70%);box-shadow:0 0 24px rgba(111,111,111,.5)}
+.avatar .nm{font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--ink)}
+.avatar .sub{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.08em}
+.score-ring{position:relative;width:84px;height:84px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#8c8c8c calc(var(--p)*1%),rgba(255,255,255,.08) 0);}
+.score-ring::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#0b0b0b}
+.score-ring b{position:relative;font-family:var(--font-display);font-weight:800;font-size:22px;color:#ffffff}
+.score-ring small{position:relative;display:block;font-family:var(--font-mono);font-size:8px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;text-align:center;margin-top:1px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px}
+.metric .ml{display:flex;justify-content:space-between;font-size:13px;margin-bottom:7px}
+.metric .ml b{font-family:var(--font-mono);color:var(--ink)}
+.bar{height:7px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--grad);transform-origin:left;transform:scaleX(var(--v));transition:transform 1.1s var(--ease)}
+body.anim .bar i{transform:scaleX(0)}
+body.anim .in .bar i{transform:scaleX(var(--v))}
+.bar.gold i{background:var(--grad-gold)}
+.bar.warn i{background:linear-gradient(120deg,#acacac,#c6c6c6)}
+.dash-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:24px}
+.mini{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--soft);padding:14px}
+.mini .k{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.mini .v{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--ink);margin-top:6px;letter-spacing:-.01em}
+.mini .v.g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* ============ JOURNEY ============ */
+.journey{counter-reset:step;display:grid;gap:0}
+.jstep{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;padding:24px 0;border-bottom:1px solid var(--line-2)}
+.jstep:last-child{border-bottom:none}
+.jstep .jn{counter-increment:step;font-family:var(--font-mono);font-size:13px;color:var(--violet);width:42px}
+.jstep .jn::before{content:"0" counter(step)}
+.jstep h3{font-size:20px;margin-bottom:4px}
+.jstep p{font-size:14px;color:var(--muted)}
+.jstep .jt{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:5px 11px;white-space:nowrap}
+
+/* ============ PRODUCTS ============ */
+.prod{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.pcard{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--glass);padding:26px;transition:transform .5s var(--ease),border-color .5s var(--ease);position:relative;overflow:hidden}
+.pcard:hover{transform:translateY(-5px);border-color:rgba(153,153,153,.45)}
+.pcard .ico{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--soft);border:1px solid var(--line);color:var(--violet);margin-bottom:18px}
+.pcard h3{font-size:20px;margin-bottom:9px}
+.pcard p{font-size:14.5px;color:var(--ink-2)}
+.pcard .q{font-family:var(--font-mono);font-size:11px;color:var(--gold);letter-spacing:.06em;margin-top:14px;display:block}
+
+/* ============ REPORT CARD ============ */
+.report{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
+.rsec{border:1px solid var(--line);border-radius:var(--r);background:var(--glass);padding:22px}
+.rsec .rk{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);margin-bottom:14px;display:flex;justify-content:space-between}
+.rlist{list-style:none;display:grid;gap:9px}
+.rlist li{display:flex;gap:11px;font-size:14.5px;color:var(--ink-2);align-items:flex-start}
+.rlist li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--grad);margin-top:7px;flex:none}
+.rlist.minus li::before{background:linear-gradient(120deg,#acacac,#c6c6c6)}
+.rspan{grid-column:1/-1}
+.tline{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.tline span{font-family:var(--font-mono);font-size:12px;color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 14px;background:var(--soft)}
+.tline span b{color:var(--gold)}
+
+/* ============ COMPAT ============ */
+.compat-top{display:flex;align-items:center;justify-content:center;gap:26px;margin-bottom:26px;flex-wrap:wrap}
+.cperson{text-align:center}
+.cperson .av{width:66px;height:66px;border-radius:50%;margin:0 auto 10px}
+.cperson .av.a{background:radial-gradient(circle at 38% 32%,#ffffff,#ababab 40%,#8a8a8a 75%)}
+.cperson .av.b{background:radial-gradient(circle at 38% 32%,#ffffff,#b4b4b4 40%,#8c8c8c 75%)}
+.cperson .nm{font-family:var(--font-display);font-weight:700;color:var(--ink)}
+.cperson .sub{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.08em}
+.cscore{display:grid;place-items:center;text-align:center}
+.cscore .big{font-family:var(--font-display);font-weight:800;font-size:54px;line-height:1;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cscore .lb{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px;margin-top:6px}
+
+/* ============ MVP / LISTS ============ */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.listcard{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--glass);padding:26px}
+.listcard h3{margin-bottom:18px;display:flex;align-items:center;gap:10px}
+.listcard h3 .tag{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+.tag.go{color:#ababab;border:1px solid rgba(138,138,138,.4);background:rgba(138,138,138,.08)}
+.tag.later{color:var(--muted);border:1px solid var(--line);background:var(--soft)}
+.checks{list-style:none;display:grid;gap:11px}
+.checks li{display:flex;gap:12px;font-size:14.5px;color:var(--ink-2);align-items:flex-start}
+.checks li svg{flex:none;margin-top:2px}
+.checks.muted li{color:var(--muted)}
+
+/* ============ ROADMAP ============ */
+.road{display:grid;grid-template-columns:repeat(4,1fr);gap:0;position:relative;margin-top:10px}
+.rstage{padding:0 18px;position:relative}
+.rstage:not(:last-child)::after{content:"";position:absolute;top:13px;left:60%;right:-40%;height:1px;background:var(--line)}
+.rstage .dot{width:26px;height:26px;border-radius:50%;background:var(--glass);border:1px solid var(--line);display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;color:var(--violet);margin-bottom:18px;position:relative;z-index:2}
+.rstage.live .dot{background:var(--grad);border-color:transparent;color:#0b0b0b;font-weight:600}
+.rstage .ph{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);margin-bottom:6px}
+.rstage h3{font-size:18px;margin-bottom:10px}
+.rstage ul{list-style:none;display:grid;gap:7px}
+.rstage li{font-size:13px;color:var(--muted);padding-left:14px;position:relative}
+.rstage li::before{content:"—";position:absolute;left:0;color:var(--faint)}
+
+/* ============ PRICING ============ */
+.tiers{display:grid;grid-template-columns:repeat(5,1fr);gap:13px}
+.tier{border:1px solid var(--line);border-radius:var(--r);background:var(--glass);padding:22px 18px;transition:transform .5s var(--ease),border-color .5s var(--ease)}
+.tier:hover{transform:translateY(-5px)}
+.tier.feat{border-color:rgba(153,153,153,.5);background:var(--glass-2)}
+.tier .tn{font-family:var(--font-display);font-weight:700;font-size:18px;color:var(--ink)}
+.tier .tp{font-family:var(--font-display);font-weight:800;font-size:26px;margin:10px 0 4px;letter-spacing:-.02em}
+.tier.feat .tp{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tier .tu{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.tier ul{list-style:none;margin-top:16px;display:grid;gap:8px}
+.tier li{font-size:12.5px;color:var(--ink-2);padding-left:16px;position:relative}
+.tier li::before{content:"+";position:absolute;left:0;color:var(--violet)}
+.channels{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+.channels span{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--soft)}
+
+/* ============ RISKS ============ */
+.risk{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.rrow{border:1px solid var(--line);border-radius:var(--r);background:var(--glass);padding:20px 22px;display:grid;grid-template-columns:1fr;gap:12px}
+.rrow .rx{display:flex;gap:11px;align-items:flex-start;font-size:14.5px;color:var(--ink)}
+.rrow .rx svg{flex:none;color:#acacac;margin-top:2px}
+.rrow .rs{display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:var(--muted);border-top:1px solid var(--line-2);padding-top:12px}
+.rrow .rs svg{flex:none;color:#ababab;margin-top:2px}
+
+/* ============ TECH STACK ============ */
+.stack{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:13px}
+.tbox{border:1px solid var(--line);border-radius:var(--r);background:var(--glass);padding:18px 18px;transition:border-color .4s var(--ease)}
+.tbox:hover{border-color:rgba(153,153,153,.4)}
+.tbox .tk{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--violet);margin-bottom:9px}
+.tbox h4{font-family:var(--font-display);font-weight:700;font-size:15.5px;color:var(--ink);letter-spacing:-.01em}
+.tbox p{font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.45}
+
+/* ============ FINALE ============ */
+#finale{text-align:center}
+#finale .wrap{display:grid;place-items:center}
+.fin-h{font-size:clamp(34px,5.4vw,64px);max-width:18ch;margin:0 auto 28px}
+.cta-final{font-family:var(--font-mono);font-size:clamp(13px,1.8vw,17px);letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-top:8px}
+.footer{border-top:1px solid var(--line-2);padding:40px 0;text-align:center;position:relative;z-index:5}
+.footer p{font-size:12.5px;color:var(--faint);max-width:70ch;margin:0 auto}
+
+/* ============ FUTURE PRIORITY ============ */
+.prio{display:grid;gap:16px}
+.pgroup{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--glass);overflow:hidden}
+.pghead{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 24px;border-bottom:1px solid var(--line-2)}
+.pghead h3{font-size:19px}
+.pgbadge{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:6px 13px;border-radius:999px}
+.pgbadge.hi{color:#ababab;border:1px solid rgba(138,138,138,.4);background:rgba(138,138,138,.08)}
+.pgbadge.md{color:#a8a8a8;border:1px solid rgba(140,140,140,.4);background:rgba(140,140,140,.08)}
+.pgbadge.lo{color:#c6c6c6;border:1px solid rgba(198,198,198,.38);background:rgba(198,198,198,.07)}
+.ptable{width:100%;border-collapse:collapse}
+.ptable th{text-align:left;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:400;padding:13px 24px;border-bottom:1px solid var(--line-2)}
+.ptable td{padding:14px 24px;font-size:13.5px;color:var(--ink-2);border-bottom:1px solid var(--line-2);vertical-align:top}
+.ptable tr:last-child td{border-bottom:none}
+.ptable .m{font-family:var(--font-display);font-weight:600;color:var(--ink);font-size:14.5px}
+.rec{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.rec.do{color:#ababab;border:1px solid rgba(138,138,138,.4)}
+.rec.test{color:#c6c6c6;border:1px solid rgba(198,198,198,.4)}
+.rec.wait{color:var(--muted);border:1px solid var(--line)}
+
+/* ============ SEGMENTED TOGGLE ============ */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--soft);gap:2px}
+.seg button{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:none;border:none;border-radius:999px;padding:7px 13px;cursor:pointer;transition:.3s var(--ease);white-space:nowrap}
+.seg button.on{color:#0b0b0b;background:var(--grad);font-weight:600}
+body.inv section:not([data-inv]){display:none!important}
+.inv-only{display:none}
+body.inv .inv-only{display:inline}
+
+/* ============ INVESTOR SNAPSHOT ============ */
+.snap{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line-2);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.snap .cell{background:#080808;padding:20px 22px;transition:background .4s var(--ease)}
+.snap .cell:hover{background:#0d0d0d}
+.snap .cell .k{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--violet);margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+.snap .cell .k em{color:var(--faint);font-style:normal}
+.snap .cell .v{font-size:13.5px;color:var(--ink-2);line-height:1.45}
+.snap .cell .v b{color:#ffffff;font-weight:600}
+.snap .cell .v .gold-txt{font-weight:700}
+
+/* ============ NOT-HOROSCOPE ENGINE ============ */
+.engine{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;margin-top:8px}
+.epanel{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--glass);padding:28px clamp(20px,2.4vw,30px)}
+.epanel.calc{border-color:rgba(138,138,138,.32)}
+.epanel.ai{border-color:rgba(153,153,153,.32)}
+.epanel .ek{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);margin-bottom:12px}
+.epanel.calc .ek{color:#ababab}
+.epanel h3{font-size:21px;margin-bottom:14px}
+.epanel ul{list-style:none;display:grid;gap:10px}
+.epanel li{font-size:14px;color:var(--ink-2);padding-left:17px;position:relative;line-height:1.4}
+.epanel li::before{content:"";position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:50%;background:var(--grad)}
+.epanel.calc li::before{background:var(--blue)}
+.evs{display:grid;place-items:center;padding:0 18px}
+.evs span{font-family:var(--font-mono);display:flex;flex-direction:column;align-items:center;gap:3px;border:1px solid rgba(153,153,153,.4);border-radius:15px;padding:13px 15px;background:var(--bg-2);box-shadow:0 0 34px rgba(111,111,111,.3)}
+.evs span b{font-size:10px;letter-spacing:.16em;color:var(--muted);font-weight:600}
+.evs span i{font-size:24px;color:#ffffff;font-style:normal;line-height:1;font-weight:600}
+
+/* ============ PHONE SCREENS ============ */
+.phones{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:8px}
+.phone{border:1px solid var(--line);border-radius:32px;background:linear-gradient(180deg,#0f0f0f,#080808);padding:14px 13px 16px;box-shadow:0 30px 80px rgba(0,0,0,.5);position:relative}
+.phone::before{content:"";position:absolute;top:13px;left:50%;transform:translateX(-50%);width:62px;height:5px;border-radius:5px;background:rgba(255,255,255,.13)}
+.pscreen{margin-top:20px;border-radius:22px;background:rgba(255,255,255,.018);border:1px solid var(--line-2);padding:16px;min-height:392px;display:flex;flex-direction:column;gap:11px}
+.pshead{display:flex;justify-content:space-between;align-items:center}
+.ptitle{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--ink);letter-spacing:-.01em}
+.psub{font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.pname{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);text-align:center;margin-top:15px}
+.popt{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line);border-radius:13px;background:var(--soft);font-size:12.5px;color:var(--ink-2)}
+.popt .pc{width:17px;height:17px;border-radius:50%;border:1px solid var(--faint);flex:none}
+.popt.sel{border-color:rgba(153,153,153,.6);background:rgba(140,140,140,.12);color:#ffffff}
+.popt.sel .pc{background:var(--grad);border-color:transparent}
+.popt span{flex:1}
+.popt small{font-family:var(--font-mono);font-size:8.5px;color:var(--gold);letter-spacing:.04em}
+.prow{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;border:1px solid var(--line);border-radius:13px;font-size:12.5px;color:var(--ink-2);background:var(--soft)}
+.prow.sel{border-color:rgba(153,153,153,.6);background:rgba(140,140,140,.12);color:#ffffff}
+.prow b{font-family:var(--font-display);color:#ffffff;font-size:15px}
+.prow .tg{font-family:var(--font-mono);font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.ptot{display:flex;justify-content:space-between;align-items:baseline;padding:6px 2px 0;font-size:12px;color:var(--muted)}
+.ptot b{color:#ffffff;font-family:var(--font-display);font-size:20px}
+.pbtn{margin-top:auto;text-align:center;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#0b0b0b;background:var(--grad);border-radius:13px;padding:13px;font-weight:600}
+.pday{border:1px solid rgba(198,198,198,.3);border-radius:14px;background:rgba(198,198,198,.06);padding:13px}
+.pday .pk{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
+.pday .pv{font-family:var(--font-display);font-weight:700;color:#ffffff;font-size:14.5px;margin-top:5px;line-height:1.25}
+.bub{font-size:12px;line-height:1.45;padding:10px 12px;border-radius:14px;max-width:92%}
+.bub.ai{background:rgba(140,140,140,.13);border:1px solid rgba(153,153,153,.25);color:var(--ink);border-bottom-left-radius:4px}
+.bub.me{background:var(--soft);border:1px solid var(--line);color:var(--ink-2);margin-left:auto;border-bottom-right-radius:4px}
+.screen-cap{text-align:center;font-size:13px;color:var(--muted);margin-top:18px}
+
+/* ============ AUDIENCE ============ */
+.persona{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--glass-2);padding:28px clamp(22px,3vw,34px)}
+.persona .pav{width:88px;height:88px;border-radius:50%;flex:none;background:radial-gradient(circle at 38% 30%,#ffffff,#b4b4b4 38%,#8c8c8c 74%);box-shadow:0 0 32px rgba(111,111,111,.45)}
+.persona .pmeta .pn{font-family:var(--font-display);font-weight:800;font-size:23px;color:var(--ink);letter-spacing:-.02em}
+.persona .pmeta .pt{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--violet);margin:6px 0 12px}
+.persona .ptags{display:flex;flex-wrap:wrap;gap:7px}
+.persona .ptags span{font-size:13px;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--soft)}
+
+/* ============ REVENUE STREAMS ============ */
+.streams{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+.stream{border:1px solid var(--line);border-radius:var(--r);background:var(--glass);padding:22px}
+.stream.later{border-style:dashed;opacity:.92}
+.stream .sh{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px}
+.stream .sh .st{font-family:var(--font-display);font-weight:700;font-size:17px;color:#ffffff}
+.stream .sh .sw{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);border:1px solid rgba(198,198,198,.35);border-radius:999px;padding:4px 9px}
+.stream ul{list-style:none;display:grid;gap:8px}
+.stream li{font-size:13px;color:var(--ink-2);padding-left:15px;position:relative}
+.stream li::before{content:"\203A";position:absolute;left:0;color:var(--violet)}
+.funnel{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:18px}
+.funnel span{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--soft)}
+.funnel i{color:var(--faint);font-style:normal}
+
+/* ============ FINALE SELL ============ */
+.fin-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:36px auto 30px;max-width:880px;width:100%}
+.fin-stats .fs{border:1px solid var(--line);border-radius:var(--r);background:var(--glass);padding:20px 16px}
+.fin-stats .fs .n{font-family:var(--font-display);font-weight:800;font-size:28px;letter-spacing:-.02em}
+.fin-stats .fs .l{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+
+/* ============ AUDIENCE LISTS + HYPOTHESIS + STREAMS WIDTH ============ */
+.aud-list{list-style:none;display:grid;gap:9px;margin-top:14px}
+.aud-list li{font-size:14.5px;color:var(--ink-2);padding-left:17px;position:relative;line-height:1.4}
+.aud-list li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:var(--grad)}
+.hypo{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:18px;font-size:14px;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r);padding:15px 19px}
+.streams{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+
+/* ============ READABILITY PASS (larger type + stronger contrast) ============ */
+.lead{color:var(--ink-2)}
+.card p{font-size:16px;color:var(--ink-2);line-height:1.55}
+.card .idx{font-size:12.5px}
+.pcard p{font-size:16px}
+.eg{font-size:14.5px;color:#b5b5b5}
+.scard h4{font-size:17.5px;margin-bottom:12px}
+.scard dl{font-size:14px;gap:6px 12px}
+.scard dt{font-size:11px}
+.scard dd{font-size:14px;line-height:1.45}
+.metric .ml{font-size:14px}
+.mini .k{font-size:11px}
+.mini .v{font-size:17px}
+.score-ring small{font-size:9px}
+.avatar .sub,.cperson .sub{font-size:11px}
+.cscore .lb{font-size:10.5px}
+.flow .node .k{font-size:11px}
+.flow .node .v{font-size:17.5px}
+.layer .tags span{font-size:11.5px}
+.snap .cell{padding:22px 24px}
+.snap .cell .k{font-size:10.5px}
+.snap .cell .v{font-size:15px;color:var(--ink)}
+.epanel li{font-size:14.5px}
+.epanel .ek{font-size:11px}
+.pscreen{min-height:412px}
+.ptitle{font-size:17.5px}
+.psub{font-size:10px}
+.pname{font-size:11.5px}
+.popt{font-size:13.5px;padding:12px 13px}
+.popt small{font-size:10px}
+.prow{font-size:13.5px;padding:12px 13px}
+.prow b{font-size:16px}
+.prow .tg{font-size:9px}
+.ptot b{font-size:21px}
+.pbtn{font-size:11px}
+.bub{font-size:13px}
+.pday .pk{font-size:10px}
+.pday .pv{font-size:16px}
+.tier li{font-size:13.5px}
+.tier .tu{font-size:10.5px}
+.tbox h4{font-size:16.5px}
+.tbox p{font-size:13.5px;color:#aaaaaa}
+.tbox .tk{font-size:10.5px}
+.jstep p{font-size:15px;color:#b4b4b4}
+.jstep .jt{font-size:11px}
+.rstage li{font-size:13.5px;color:#aaaaaa}
+.rstage .ph{font-size:11px}
+.rrow .rx{font-size:15px}
+.rrow .rs{font-size:14px;color:#b2b2b2}
+.stream li{font-size:13.5px}
+.persona .ptags span{font-size:13.5px}
+.channels span,.funnel span{font-size:12.5px}
+.ptable td{font-size:14.5px}
+.ptable th{font-size:11px}
+.ptable .m{font-size:15px}
+.fin-stats .fs .l{font-size:10.5px}
+.badge,.pgbadge,.rec{font-size:11px}
+.eyebrow{font-size:12.5px}
+.screen-cap{font-size:14px;color:var(--muted)}
+
+/* ============ RESPONSIVE BASE ============ */
+@media(max-width:980px){
+  .tiers{grid-template-columns:repeat(3,1fr)}
+  .road{grid-template-columns:repeat(2,1fr);gap:28px 0}
+  .rstage:not(:last-child)::after{display:none}
+}
+@media(max-width:920px){
+  .hero-grid{grid-template-columns:1fr;gap:50px}
+  .aura{order:-1}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(2,1fr)}
+  .report{grid-template-columns:1fr}
+  .snap{grid-template-columns:repeat(2,1fr)}
+  .engine{grid-template-columns:1fr;gap:14px}
+  .phones{grid-template-columns:1fr;max-width:380px;margin-left:auto;margin-right:auto}
+  .streams{grid-template-columns:1fr}
+  .fin-stats{grid-template-columns:repeat(2,1fr)}
+  .dotnav{display:none}
+}
+@media(max-width:600px){
+  section{padding:96px 0 64px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .layer{grid-template-columns:1fr;gap:14px}
+  .flow{flex-direction:column}
+  .flow .node{width:100%}
+  .flow .arr{transform:rotate(90deg);padding:6px 0}
+  .pghead{flex-wrap:wrap;gap:10px}
+  .hdr{padding:13px 15px}
+  .hdr-right{gap:9px}
+  .seg button{padding:6px 9px;font-size:9px;letter-spacing:.05em}
+  .btn-print{display:none}
+  .hdr-tag{display:none}
+  .metrics,.cgrid,.split,.risk,.tiers{grid-template-columns:1fr}
+  .road{grid-template-columns:1fr}
+  .snap{grid-template-columns:1fr}
+  .persona{grid-template-columns:1fr;text-align:center}
+  .persona .pav{margin:0 auto}
+  .persona .ptags{justify-content:center}
+  .jstep{grid-template-columns:auto 1fr;gap:14px}
+  .jstep .jt{display:none}
+  .h1xl{font-size:38px}
+  .ptable thead{display:none}
+  .ptable td{display:block;padding:6px 18px;border:none}
+  .ptable tr{display:block;border-bottom:1px solid var(--line-2);padding:12px 0}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation:none!important;transition-duration:.001s!important}
+  .rv{opacity:1;transform:none;filter:none}
+  html{scroll-behavior:auto}
+}
+
+.print-disc{display:none}
+/* ============ PRINT / PDF ============ */
+@media print{
+  @page{size:1200px 1180px;margin:0}
+  html,body{background:#060606!important}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  .hdr,.dotnav,.progress,.btn-print,.seg,#stars,.grain,.mesh,.footer{display:none!important}
+  .glow{opacity:.3!important;animation:none!important}
+  /* each slide centered on its own page; tall slides flow to a 2nd page between cards */
+  section{min-height:1172px!important;height:auto!important;display:flex;flex-direction:column;justify-content:center;padding:44px 60px!important;break-before:page;page-break-before:always}
+  #hero{break-before:avoid;page-break-before:avoid}
+  /* print follows the active mode: Full prints all slides, Investor its 11 */
+  .rv{opacity:1!important;transform:none!important;filter:none!important}
+  .wrap{max-width:none;width:100%}
+  .print-disc{display:block!important;margin:22px auto 0;font-size:11px;line-height:1.4;color:var(--faint);text-align:center;max-width:86ch}
+  /* keep every content block intact across page boundaries */
+  .card,.scard,.pcard,.layer,.rrow,.tier,.rstage,.jstep,.tbox,.mini,.flow .node,
+  .appwin,.pgroup,.rsec,.epanel,.phone,.persona,.stream,.snap .cell,.fin-stats .fs,
+  .legend,.disc,.ptable tr,.metric,.statcol,.listcard{break-inside:avoid;page-break-inside:avoid}
+  .layer+.layer{margin-top:14px}
+  .card.lift:hover,.scard:hover,.pcard:hover,.tier:hover{transform:none}
+}
+</style>
+</head>
+<body>
+<div class="bg-fx">
+  <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+</div>
+<canvas id="stars"></canvas>
+<div class="mesh"></div>
+<div class="grain"></div>
+<div class="progress" id="progress"></div>
+
+<header class="hdr" id="hdr">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#bg)" stroke-width="1.4"/><circle cx="12" cy="12" r="4" fill="url(#bg)"/><circle cx="12" cy="2.4" r="1.5" fill="#c6c6c6"/><defs><linearGradient id="bg" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#8a8a8a"/><stop offset="1" stop-color="#b4b4b4"/></linearGradient></defs></svg>
+    <span>AE<b>THER</b></span>
+  </div>
+  <div class="hdr-right">
+    <div class="seg" id="seg">
+      <button data-mode="full" class="on">Полная</button>
+      <button data-mode="inv">Investor</button>
+    </div>
+    <button class="btn-print" onclick="window.print()">Экспорт PDF</button>
+  </div>
+</header>
+
+<nav class="dotnav" id="dotnav"></nav>
+
+<!-- ============ 01 · HERO ============ -->
+<section id="hero" data-inv>
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow rv">Поведенческий профайлинг <span class="num"></span></span>
+        <h1 class="h1xl rv d1">Цельный портрет личности, а не набор <span class="hl">гороскопов</span>.</h1>
+        <p class="lead rv d2">Платформа глубинного анализа личности, совместимости и жизненных сценариев. Точные расчёты, символы и психология — в одном понятном профиле о вас.</p>
+        <div class="hero-names rv d3">
+          <span class="chip work">Рабочее название · МАТРИЦА</span>
+          <span class="chip">NOEMA</span><span class="chip">ANIMA</span><span class="chip">LUMEN</span><span class="chip">ARCANA</span><span class="chip">MERIDIAN</span><span class="chip">PRISM</span>
+        </div>
+        <div class="hero-cta rv d4">
+          <a href="#architecture" class="btn btn-primary">Архитектура продукта</a>
+          <a href="#dashboard" class="btn btn-ghost">Демо-дашборд →</a>
+        </div>
+        <div class="hero-stats rv d5">
+          <div class="hstat"><div class="n grad-txt">15+</div><div class="l">методов анализа</div></div>
+          <div class="hstat"><div class="n grad-txt">12</div><div class="l">категорий профиля</div></div>
+          <div class="hstat"><div class="n grad-txt">3</div><div class="l">слоя архитектуры</div></div>
+        </div>
+      </div>
+      <div class="rv d2">
+        <div class="aura">
+          <div class="ring a"></div><div class="ring b"></div><div class="ring c"></div>
+          <div class="orbit"><i></i></div><div class="orbit o2"><i></i></div>
+          <div class="core"></div>
+          <div class="aura-tags">
+            <span class="t1">Расчёты</span><span class="t2">Психология</span><span class="t3">Символы</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INVESTOR SNAPSHOT ============ -->
+<section id="snapshot" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Investor Snapshot <span class="num"></span></span>
+    <h2 class="title rv d1">Весь продукт на <span class="hl">одном экране</span></h2>
+    <p class="lead rv d2" style="margin-bottom:30px">Краткая версия для инвестора. Полный дек — переключатель «Полная» в шапке.</p>
+    <div class="snap rv d2">
+      <div class="cell"><div class="k">Продукт <em>01</em></div><div class="v"><b>Поведенческий профайлинг</b> — профиль личности, совместимости и жизненных сценариев.</div></div>
+      <div class="cell"><div class="k">Проблема <em>02</em></div><div class="v">Гороскопы поверхностны, тесты сухи, эзотерика хаотична. Нет одного понятного ответа.</div></div>
+      <div class="cell"><div class="k">Категория <em>03</em></div><div class="v">Self-discovery / personality intelligence — премиум-сегмент, а не «гадания».</div></div>
+      <div class="cell"><div class="k">Рынок <em>04</em></div><div class="v">Ядро — <b>женщины 25–44</b>, высокий интерес к себе и отношениям, готовность платить.</div></div>
+      <div class="cell"><div class="k">Дифференциация <em>05</em></div><div class="v">Расчётный движок <b>отдельно</b> от AI-текста + честная маркировка методов.</div></div>
+      <div class="cell"><div class="k">Доказательная опора <em>06</em></div><div class="v">Big Five / HEXACO, тип привязанности — научный слой под символическим.</div></div>
+      <div class="cell"><div class="k">Бизнес-модель <em>07</em></div><div class="v">Разовые отчёты + подписка + пара + white-label; <b>B2B позже</b>.</div></div>
+      <div class="cell"><div class="k">Цены <em>08</em></div><div class="v"><b>$9 · $29 · $19/мес · $24 · $99+</b> от импульса до подписки и Pro.</div></div>
+      <div class="cell"><div class="k">Виральность <em>09</em></div><div class="v"><span class="gold-txt">Couple</span> приводит второго пользователя — встроенный k-фактор.</div></div>
+      <div class="cell"><div class="k">Маржа <em>10</em></div><div class="v"><span class="gold-txt">90%+</span> — цифровой продукт, основная цена — генерация и инфраструктура.</div></div>
+      <div class="cell"><div class="k">Масштаб <em>11</em></div><div class="v">Telegram-бот → Web App → Mobile, одна кодовая база, мультиязык.</div></div>
+      <div class="cell"><div class="k">Видение <em>12</em></div><div class="v"><b>Персональный навигатор личности</b> — от данных к трансформации.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 · PROBLEM ============ -->
+<section id="problem" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Проблема <span class="num">/ 02</span></span>
+    <h2 class="title rv d1">Сегодня знание о себе разорвано на <span class="hl">три мира</span></h2>
+    <p class="lead rv d2" style="margin-bottom:40px">Каждый из них даёт фрагмент — и ни один не складывается в цельную, эмоциональную и при этом понятную картину человека.</p>
+    <div class="grid g3">
+      <div class="card lift rv d1">
+        <span class="idx">01 — Поверхностно</span>
+        <h3>Гороскопы и приложения</h3>
+        <p>Массовые, обобщённые, «для всех Овнов сразу». Красиво, но не про конкретного человека и без глубины.</p>
+      </div>
+      <div class="card lift rv d2">
+        <span class="idx">02 — Сухо</span>
+        <h3>Психологические тесты</h3>
+        <p>Научно корректны, но холодны и безличны: таблицы, проценты, термины. Не вовлекают и быстро забываются.</p>
+      </div>
+      <div class="card lift rv d3">
+        <span class="idx">03 — Хаотично</span>
+        <h3>Эзотерические системы</h3>
+        <p>Арканы, дома, линии, стволы и ветви. Глубоко, но перегружено терминами и разрозненно — без единого вывода.</p>
+      </div>
+    </div>
+    <div class="card rv d4" style="margin-top:18px;background:var(--glass-2);border-color:rgba(153,153,153,.3)">
+      <p style="font-size:18px;color:var(--ink)"><strong class="grad-txt">Вывод:</strong> людям нужен один продукт — глубокий, красивый, персональный и понятный. Не семь гаданий, а единый ответ: «кто я, в чём моя сила, где мои риски».</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 · SOLUTION ============ -->
+<section id="solution" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Решение <span class="num">/ 03</span></span>
+    <h2 class="title rv d1">Один профиль вместо <span class="hl">семи гаданий</span></h2>
+    <p class="lead rv d2" style="margin-bottom:36px">Множество методов работают «за кулисами» — пользователь получает один согласованный портрет, написанный одним голосом.</p>
+    <div class="flow rv d2">
+      <div class="node"><div class="k">Шаг 01</div><div class="v">Данные</div></div>
+      <div class="arr">→</div>
+      <div class="node"><div class="k">Шаг 02</div><div class="v">Символические системы</div></div>
+      <div class="arr">→</div>
+      <div class="node"><div class="k">Шаг 03</div><div class="v">Психологический слой</div></div>
+      <div class="arr">→</div>
+      <div class="node"><div class="k">Шаг 04</div><div class="v">AI-интерпретация</div></div>
+      <div class="arr">→</div>
+      <div class="node" style="border-color:rgba(153,153,153,.45);background:var(--glass-2)"><div class="k" style="color:var(--gold)">Результат</div><div class="v grad-txt">Личная карта</div></div>
+    </div>
+    <div class="grid g4 rv d3" style="margin-top:28px">
+      <div class="card lift"><h3 style="font-size:18px">Точность</h3><p>Астро-эфемериды, нумерология и матрица считаются детерминированно — не выдумываются.</p></div>
+      <div class="card lift"><h3 style="font-size:18px">Психология</h3><p>Big Five, HEXACO и тип привязанности заземляют выводы в реальные модели.</p></div>
+      <div class="card lift"><h3 style="font-size:18px">AI-перевод</h3><p>Движок переводит расчёты в живой, человеческий язык без жаргона.</p></div>
+      <div class="card lift"><h3 style="font-size:18px">Действие</h3><p>Каждый вывод заканчивается рекомендацией: что с этим делать дальше.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ NOT A HOROSCOPE ============ -->
+<section id="not-horoscope" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Почему это не гороскоп <span class="num"></span></span>
+    <h2 class="title rv d1">Под капотом — <span class="hl">система, а не астролог</span></h2>
+    <p class="lead rv d2" style="margin-bottom:32px">МАТРИЦА — не астрологическое приложение, а Поведенческий профайлинг. Мы считаем и интерпретируем разными слоями.</p>
+    <div class="engine rv d2">
+      <div class="epanel calc">
+        <div class="ek">Расчётный слой</div>
+        <h3>Считает код</h3>
+        <ul>
+          <li>Дата, время, место рождения</li>
+          <li>Эфемериды</li>
+          <li>Матрица арканов</li>
+          <li>Нумерология</li>
+          <li>Детерминированный результат</li>
+        </ul>
+      </div>
+      <div class="evs"><span><b>CALC</b><i>≠</i><b>TEXT</b></span></div>
+      <div class="epanel ai">
+        <div class="ek">Интерпретационный слой</div>
+        <h3>Объясняет AI</h3>
+        <ul>
+          <li>Берёт готовые данные</li>
+          <li>Переводит в человеческий язык</li>
+          <li>Не выдумывает расчёты</li>
+          <li>Работает по шаблонам</li>
+          <li>Даёт понятные рекомендации</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card rv d3" style="margin-top:16px;text-align:center;background:var(--glass-2);border-color:rgba(153,153,153,.3)">
+      <h3 style="font-size:clamp(19px,2.6vw,28px)">Код считает. <span class="grad-txt">AI объясняет.</span> Пользователь получает понятный профиль.</h3>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 · ARCHITECTURE ============ -->
+<section id="architecture">
+  <div class="wrap">
+    <span class="eyebrow rv">Архитектура <span class="num">/ 04</span></span>
+    <h2 class="title rv d1">Три слоя: данные, движок, <span class="hl">опыт</span></h2>
+    <p class="lead rv d2" style="margin-bottom:38px">Расчётный движок живёт отдельно от AI-текста — это убирает «галлюцинации» и делает систему предсказуемой.</p>
+    <div class="rv d2">
+      <div class="layer">
+        <div class="edge"></div>
+        <div class="lnum">01</div>
+        <div>
+          <div class="lk">Data Layer · Источники</div>
+          <h3>Сбор данных и расчёты</h3>
+          <p style="font-size:15px">Дата, время и место рождения, ответы анкет и опциональные модули. Детерминированные расчёты по астрономическим и числовым системам.</p>
+          <div class="tags"><span>22 аркана</span><span>Астрология</span><span>Джйотиш</span><span>Ба Цзы</span><span>Human Design</span><span>Нумерология</span><span>Big Five / HEXACO</span></div>
+        </div>
+      </div>
+      <div class="layer-link"><svg width="18" height="26" viewBox="0 0 18 26" fill="none"><path d="M9 1v24M9 25l-6-6M9 25l6-6" stroke="currentColor" stroke-width="1.4"/></svg></div>
+      <div class="layer">
+        <div class="edge"></div>
+        <div class="lnum">02</div>
+        <div>
+          <div class="lk">Interpretation Engine · Движок</div>
+          <h3>Перевод в понятные категории</h3>
+          <p style="font-size:15px">Система не перечисляет термины, а сводит все сигналы в 12 единых категорий личности — на языке психологии и смыслов.</p>
+          <div class="tags"><span>Энергия</span><span>Мышление</span><span>Эмоции</span><span>Коммуникация</span><span>Любовь</span><span>Деньги</span><span>Реализация</span><span>Тень</span><span>Родовые сценарии</span><span>Периоды</span><span>Совместимость</span><span>Рекомендации</span></div>
+        </div>
+      </div>
+      <div class="layer-link"><svg width="18" height="26" viewBox="0 0 18 26" fill="none"><path d="M9 1v24M9 25l-6-6M9 25l6-6" stroke="currentColor" stroke-width="1.4"/></svg></div>
+      <div class="layer">
+        <div class="edge"></div>
+        <div class="lnum">03</div>
+        <div>
+          <div class="lk">Experience Layer · Результат</div>
+          <h3>Красивая цифровая карта</h3>
+          <p style="font-size:15px">Пользователь видит не «астрологический отчёт», а интерактивный профиль и понятные ответы на главные вопросы о себе.</p>
+          <div class="tags"><span>Кто я</span><span>Сильные стороны</span><span>Слабые места</span><span>Как я люблю</span><span>Как зарабатываю</span><span>Моя миссия</span><span>Что повторяется</span><span>Кто мне подходит</span><span>Что делать дальше</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 · SOURCES ============ -->
+<section id="sources">
+  <div class="wrap">
+    <span class="eyebrow rv">Источники анализа <span class="num">/ 05</span></span>
+    <h2 class="title rv d1">15+ методов, <span class="hl">один язык</span></h2>
+    <p class="lead rv d2" style="margin-bottom:18px">Каждый метод маркирован уровнем доверия. Непроверенные системы работают как символические инструменты, не как диагностика.</p>
+    <div class="legend rv d2">
+      <span class="badge badge--high">Научно обоснованный</span>
+      <span class="badge badge--mid">Частичные данные</span>
+      <span class="badge badge--sym">Символический</span>
+      <span class="badge badge--exp">Экспериментальный</span>
+    </div>
+    <div class="src rv d3">
+      <div class="scard"><div class="top"><span class="i">01</span><span class="badge badge--high">Научно обоснованный</span></div><h4>Психологические анкеты · Big Five / HEXACO</h4><dl><dt>Анализ</dt><dd>5–6 черт личности, тип привязанности, эмоциональные паттерны</dd><dt>Данные</dt><dd>Ответы на опросник</dd><dt>Польза</dt><dd>Достоверное ядро профиля</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">02</span><span class="badge badge--mid">Частичные данные</span></div><h4>Анализ голоса · паралингвистика</h4><dl><dt>Анализ</dt><dd>Высота, тембр, темп, энергетика речи</dd><dt>Данные</dt><dd>Короткая аудиозапись</dd><dt>Польза</dt><dd>Тон, уверенность, эмоц. фон</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">03</span><span class="badge badge--mid">Частичные данные</span></div><h4>Дневники снов</h4><dl><dt>Анализ</dt><dd>Повторяющиеся сюжеты, персонажи, эмоции</dd><dt>Данные</dt><dd>Регулярные записи снов</dd><dt>Польза</dt><dd>Саморефлексия, паттерны</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">04</span><span class="badge badge--sym">Символический</span></div><h4>Матрица 22 арканов</h4><dl><dt>Анализ</dt><dd>Зоны матрицы по дате рождения</dd><dt>Данные</dt><dd>Дата рождения</dd><dt>Польза</dt><dd>Каркас портрета и «энергий»</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">05</span><span class="badge badge--sym">Символический</span></div><h4>Западная астрология</h4><dl><dt>Анализ</dt><dd>Планеты, дома, аспекты натальной карты</dd><dt>Данные</dt><dd>Дата, время, место</dd><dt>Польза</dt><dd>Богатый язык символов</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">06</span><span class="badge badge--sym">Символический</span></div><h4>Джйотиш · ведическая астрология</h4><dl><dt>Анализ</dt><dd>Накшатры, лагна, даши, Раху/Кету</dd><dt>Данные</dt><dd>Дата, время, место</dd><dt>Польза</dt><dd>Кармические периоды</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">07</span><span class="badge badge--sym">Символический</span></div><h4>Ба Цзы · четыре столпа</h4><dl><dt>Анализ</dt><dd>Небесные стволы и земные ветви, 5 элементов</dd><dt>Данные</dt><dd>Год, месяц, день, час</dd><dt>Польза</dt><dd>Периоды удачи и баланс</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">08</span><span class="badge badge--sym">Символический</span></div><h4>Human Design</h4><dl><dt>Анализ</dt><dd>Тип, стратегия, авторитет, профиль, центры</dd><dt>Данные</dt><dd>Дата, время, место</dd><dt>Польза</dt><dd>Карта энергий и решений</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">09</span><span class="badge badge--sym">Символический</span></div><h4>Нумерология</h4><dl><dt>Анализ</dt><dd>Числовые значения даты и имени</dd><dt>Данные</dt><dd>Дата рождения, имя</dd><dt>Польза</dt><dd>Доп. слой характеристик</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">10</span><span class="badge badge--sym">Символический</span></div><h4>Метафорические карты · МАК</h4><dl><dt>Анализ</dt><dd>Ассоциации к изображениям</dd><dt>Данные</dt><dd>Выбор карт и реакция</dd><dt>Польза</dt><dd>Доступ к бессознательному</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">11</span><span class="badge badge--sym">Символический</span></div><h4>Родовые сценарии</h4><dl><dt>Анализ</dt><dd>Семейные роли, повторяющиеся сценарии</dd><dt>Данные</dt><dd>Структурированная анкета</dd><dt>Польза</dt><dd>Видеть наследуемые программы</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">12</span><span class="badge badge--sym">Символический</span></div><h4>Совместимость пары</h4><dl><dt>Анализ</dt><dd>Сопоставление двух профилей</dd><dt>Данные</dt><dd>Данные двух людей</dd><dt>Польза</dt><dd>Зоны притяжения и конфликтов</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">13</span><span class="badge badge--exp">Экспериментальный</span></div><h4>Хиромантия · по фото руки</h4><dl><dt>Анализ</dt><dd>Линии, холмы, форма кисти</dd><dt>Данные</dt><dd>Фото ладони (CV)</dd><dt>Польза</dt><dd>Игровой рефлексивный слой</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">14</span><span class="badge badge--exp">Экспериментальный</span></div><h4>Физиогномика · чтение лица</h4><dl><dt>Анализ</dt><dd>Зоны лица и пропорции</dd><dt>Данные</dt><dd>Фото лица (CV)</dd><dt>Польза</dt><dd>Развлекательный модуль</dd></dl></div>
+      <div class="scard"><div class="top"><span class="i">15</span><span class="badge badge--exp">Экспериментальный</span></div><h4>Графология · анализ почерка</h4><dl><dt>Анализ</dt><dd>Наклон, нажим, размер, зоны</dd><dt>Данные</dt><dd>Фото образца письма</dd><dt>Польза</dt><dd>Игровая интроспекция</dd></dl></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 · HONESTY ============ -->
+<section id="honesty">
+  <div class="wrap">
+    <span class="eyebrow rv">Методологическая честность <span class="num">/ 06</span></span>
+    <h2 class="title rv d1">Прозрачность вместо <span class="hl">обещаний</span></h2>
+    <p class="lead rv d2" style="margin-bottom:36px">Прозрачность — часть премиальности. Все методы разделены на три класса, и пользователь всегда знает, что перед ним.</p>
+    <div class="grid g3">
+      <div class="card lift rv d1" style="border-color:rgba(138,138,138,.3)">
+        <span class="badge badge--high">Класс A</span>
+        <h3 style="margin-top:16px">Расчётные системы</h3>
+        <p>Детерминированные вычисления по фиксированным правилам. Астрология, джйотиш, Ба Цзы, Human Design, нумерология, 22 аркана.</p>
+        <p class="eg" style="margin-top:10px">Не научны как предсказание, но точны и воспроизводимы как символический каркас.</p>
+      </div>
+      <div class="card lift rv d2" style="border-color:rgba(198,198,198,.3)">
+        <span class="badge badge--sym">Класс B</span>
+        <h3 style="margin-top:16px">Рефлексивные системы</h3>
+        <p>Инструменты самопознания, а не диагностики. МАК, сны, архетипы, родовые сценарии.</p>
+        <p class="eg" style="margin-top:10px">Помогают увидеть паттерны и задать себе правильные вопросы.</p>
+      </div>
+      <div class="card lift rv d3" style="border-color:rgba(140,140,140,.3)">
+        <span class="badge badge--mid">Класс C</span>
+        <h3 style="margin-top:16px">Поведенческие данные</h3>
+        <p>Научно заземлённый слой. Анкеты, Big Five, HEXACO, тип привязанности, голос, текстовые ответы.</p>
+        <p class="eg" style="margin-top:10px">Дают измеримую опору всему профилю.</p>
+      </div>
+    </div>
+    <div class="card rv d4" style="margin-top:18px;background:var(--glass-2);border-color:rgba(153,153,153,.3)">
+      <h3 style="font-size:clamp(20px,2.6vw,30px);max-width:32ch">«Мы не ставим диагнозов и не предсказываем будущее. Мы создаём систему самопознания, которая помогает увидеть паттерны, язык своей личности и точки роста.»</h3>
+    </div>
+    <div class="disc rv d4">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <span>МАТРИЦА — продукт самопознания и развлечения. Он не ставит медицинских, психиатрических или иных диагнозов, не гарантирует точность и не предсказывает будущее. Любые выводы носят интерпретационный и рекомендательный характер.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 07 · DASHBOARD ============ -->
+<section id="dashboard">
+  <div class="wrap">
+    <span class="eyebrow rv">Дашборд личности <span class="num">/ 07</span></span>
+    <h2 class="title rv d1">Профиль, который <span class="hl">хочется открыть</span></h2>
+    <p class="lead rv d2" style="margin-bottom:34px">Не отчёт со звёздами, а живой интерфейс. Данные ниже — демонстрационные и не являются обещанием результата.</p>
+    <div class="appwin rv d2">
+      <div class="appbar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="ttl">aether.app / Профиль · Анна</span></div>
+      <div class="appbody">
+        <div class="dash-head">
+          <div class="avatar">
+            <div class="ring2"></div>
+            <div><div class="nm">Анна К.</div><div class="sub">Архетип · Стратег-Эмпат</div></div>
+          </div>
+          <div class="score-ring" style="--p:78"><b>78</b><small>Целостность</small></div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><div class="ml"><span>Интуиция</span><b>82%</b></div><div class="bar"><i style="--v:.82"></i></div></div>
+          <div class="metric"><div class="ml"><span>Стратегичность</span><b>74%</b></div><div class="bar"><i style="--v:.74"></i></div></div>
+          <div class="metric"><div class="ml"><span>Эмоциональная глубина</span><b>91%</b></div><div class="bar"><i style="--v:.91"></i></div></div>
+          <div class="metric"><div class="ml"><span>Денежная устойчивость</span><b>57%</b></div><div class="bar gold"><i style="--v:.57"></i></div></div>
+          <div class="metric"><div class="ml"><span>Коммуникация</span><b>69%</b></div><div class="bar"><i style="--v:.69"></i></div></div>
+          <div class="metric"><div class="ml"><span>Риск выгорания</span><b>68%</b></div><div class="bar warn"><i style="--v:.68"></i></div></div>
+        </div>
+        <div class="dash-cards">
+          <div class="mini"><div class="k">Ядро</div><div class="v">Создатель смыслов</div></div>
+          <div class="mini"><div class="k">Любовь</div><div class="v">Глубина &gt; флирт</div></div>
+          <div class="mini"><div class="k">Реализация</div><div class="v g">Эксперт-роль</div></div>
+          <div class="mini"><div class="k">Период 2026</div><div class="v">Пересборка</div></div>
+          <div class="mini"><div class="k">Совместимость</div><div class="v g">7 / 10</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="disc rv d3"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span>Все цифры и шкалы на этом экране — mockup для демонстрации интерфейса, а не реальные измерения или гарантии.</span></div>
+  </div>
+</section>
+
+<!-- ============ 08 · JOURNEY ============ -->
+<section id="journey">
+  <div class="wrap">
+    <span class="eyebrow rv">Путь пользователя <span class="num">/ 08</span></span>
+    <h2 class="title rv d1">От даты рождения до <span class="hl">ежедневного навигатора</span></h2>
+    <div class="journey rv d2" style="margin-top:18px">
+      <div class="jstep"><span class="jn"></span><div><h3>Базовые данные</h3><p>Дата, время и место рождения — основа для всех расчётов.</p></div><span class="jt">30 сек</span></div>
+      <div class="jstep"><span class="jn"></span><div><h3>Короткая анкета</h3><p>10–15 вопросов: Big Five, привязанность, ценности.</p></div><span class="jt">3 мин</span></div>
+      <div class="jstep"><span class="jn"></span><div><h3>Доп. модули по желанию</h3><p>Фото руки, голос, почерк, дневник сна, профиль партнёра.</p></div><span class="jt">опционально</span></div>
+      <div class="jstep"><span class="jn"></span><div><h3>AI собирает карту</h3><p>Движок сводит все сигналы в 12 категорий и единый портрет.</p></div><span class="jt">мгновенно</span></div>
+      <div class="jstep"><span class="jn"></span><div><h3>Персональный отчёт</h3><p>«Кто я», сильные стороны, риски, любовь, деньги, миссия.</p></div><span class="jt">результат</span></div>
+      <div class="jstep"><span class="jn"></span><div><h3>Жизнь с продуктом</h3><p>Ежедневные подсказки, совместимость, активные периоды.</p></div><span class="jt">retention</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 · PRODUCTS ============ -->
+<section id="products">
+  <div class="wrap">
+    <span class="eyebrow rv">Пользовательские продукты <span class="num">/ 09</span></span>
+    <h2 class="title rv d1">Шесть ответов на <span class="hl">главные вопросы</span></h2>
+    <div class="prod rv d2" style="margin-top:14px">
+      <div class="pcard"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="1.5"/></svg></div><h3>Кто я?</h3><p>Глубинный портрет: характер, архетип, сильные стороны и теневые места.</p><span class="q">«В чём моя суть и сила?»</span></div>
+      <div class="pcard"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 21s-7-4.4-7-9.5A3.5 3.5 0 0 1 12 8a3.5 3.5 0 0 1 7 3.5C19 16.6 12 21 12 21z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div><h3>Любовь и совместимость</h3><p>Притяжение, конфликтность, сексуальная динамика и долгосрочный потенциал пары.</p><span class="q">«Кто мне подходит?»</span></div>
+      <div class="pcard"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3v18M8 7h6a2.5 2.5 0 0 1 0 5H9a2.5 2.5 0 0 0 0 5h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div><h3>Деньги и реализация</h3><p>Сценарии заработка, сильные профессиональные роли и денежные блоки.</p><span class="q">«Как я зарабатываю?»</span></div>
+      <div class="pcard"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M6 8l3 3M18 8l-3 3M5 20a7 7 0 0 1 14 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h3>Родовые сценарии</h3><p>Повторяющиеся семейные программы, установки и страхи, которые управляют выбором.</p><span class="q">«Что повторяется в моей жизни?»</span></div>
+      <div class="pcard"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div><h3>Периоды жизни</h3><p>Что сейчас активировано, где зона кризиса, а где — точка роста.</p><span class="q">«Что происходит со мной сейчас?»</span></div>
+      <div class="pcard"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 5 5.6.6-4 4 1 5.4-5-2.8-5 2.8 1-5.4-4-4 5.6-.6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div><h3>Ежедневный навигатор</h3><p>Персональные рекомендации на день, неделю и месяц — что делать дальше.</p><span class="q">«Какой мой следующий шаг?»</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 · REPORT ============ -->
+<section id="report">
+  <div class="wrap">
+    <span class="eyebrow rv">Премиум-отчёт <span class="num">/ 10</span></span>
+    <h2 class="title rv d1">Структура <span class="hl">глубокого разбора</span></h2>
+    <p class="lead rv d2" style="margin-bottom:32px">Расширенный отчёт — флагманский платный продукт. Собран в единый документ, написан одним голосом, оформлен как премиальная карта.</p>
+    <div class="report rv d2">
+      <div class="rsec"><div class="rk"><span>Ядро личности</span><span class="grad-txt">01</span></div><p style="font-size:15px;color:var(--ink-2)">Архетип, доминирующие энергии, стиль мышления и то, как человек проявляется в мире. База, на которой держится всё остальное.</p></div>
+      <div class="rsec"><div class="rk"><span>5 главных талантов</span><span class="grad-txt">02</span></div><ul class="rlist"><li>Видеть смыслы и системы</li><li>Глубокая эмпатия и чтение людей</li><li>Стратегическое планирование</li><li>Творческая переработка опыта</li><li>Устойчивость в кризисе</li></ul></div>
+      <div class="rsec"><div class="rk"><span>5 слабых мест</span><span class="gold-txt">03</span></div><ul class="rlist minus"><li>Склонность к перегрузу и выгоранию</li><li>Сложность с границами</li><li>Откладывание из-за перфекционизма</li><li>Денежные блоки и недооценка себя</li><li>Уход в анализ вместо действия</li></ul></div>
+      <div class="rsec"><div class="rk"><span>Любовь и деньги</span><span class="grad-txt">04</span></div><p style="font-size:14.5px;color:var(--ink-2)"><b style="color:var(--ink)">Любовный сценарий:</b> тяга к глубине и партнёрству на равных, риск спасательства.</p><p style="font-size:14.5px;color:var(--ink-2);margin-top:8px"><b style="color:var(--ink)">Денежный сценарий:</b> доход через экспертность и смыслы, а не через объём.</p></div>
+      <div class="rsec rspan"><div class="rk"><span>Родовой сценарий · Период 2026–2028 · Совместимость</span><span class="grad-txt">05—07</span></div><p style="font-size:14.5px;color:var(--ink-2);margin-bottom:12px">Повторяющиеся семейные программы, активный жизненный период и карта совместимости с ключевыми типами партнёров.</p><div class="tline"><span>Родовое: <b>тема денег и опоры</b></span><span>2026–2028: <b>пересборка и рост</b></span><span>Лучшая пара: <b>тип «Опора»</b></span></div></div>
+      <div class="rsec rspan" style="background:var(--glass-2);border-color:rgba(153,153,153,.3)"><div class="rk"><span>Практические рекомендации</span><span class="gold-txt">08</span></div><p style="font-size:15px;color:var(--ink)">Каждый блок завершается конкретными шагами: что усилить, чего избегать, какие решения принимать в текущем периоде. Отчёт — не приговор, а навигатор.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 · COMPATIBILITY ============ -->
+<section id="compatibility">
+  <div class="wrap">
+    <span class="eyebrow rv">Совместимость <span class="num">/ 11</span></span>
+    <h2 class="title rv d1">Главный <span class="hl">виральный</span> модуль</h2>
+    <p class="lead rv d2" style="margin-bottom:30px">Дашборд пары — то, чем делятся и что приводит второго пользователя. Демо-данные ниже иллюстративны.</p>
+    <div class="appwin rv d2">
+      <div class="appbar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="ttl">aether.app / Совместимость · Анна + Марк</span></div>
+      <div class="appbody">
+        <div class="compat-top">
+          <div class="cperson"><div class="av a"></div><div class="nm">Анна</div><div class="sub">Стратег-Эмпат</div></div>
+          <div class="cscore"><div class="big">7.4</div><div class="lb">Общий индекс / 10</div></div>
+          <div class="cperson"><div class="av b"></div><div class="nm">Марк</div><div class="sub">Опора-Деятель</div></div>
+        </div>
+        <div class="cgrid">
+          <div class="metric"><div class="ml"><span>Эмоциональная совместимость</span><b>88%</b></div><div class="bar"><i style="--v:.88"></i></div></div>
+          <div class="metric"><div class="ml"><span>Сексуальная химия</span><b>81%</b></div><div class="bar"><i style="--v:.81"></i></div></div>
+          <div class="metric"><div class="ml"><span>Бытовая совместимость</span><b>64%</b></div><div class="bar gold"><i style="--v:.64"></i></div></div>
+          <div class="metric"><div class="ml"><span>Долгосрочный потенциал</span><b>76%</b></div><div class="bar"><i style="--v:.76"></i></div></div>
+          <div class="metric"><div class="ml"><span>Финансовое взаимодействие</span><b>59%</b></div><div class="bar gold"><i style="--v:.59"></i></div></div>
+          <div class="metric"><div class="ml"><span>Конфликтные зоны</span><b>42%</b></div><div class="bar warn"><i style="--v:.42"></i></div></div>
+        </div>
+        <div class="dash-cards" style="margin-top:22px">
+          <div class="mini"><div class="k">Усиливает</div><div class="v" style="font-size:14px">Общие смыслы</div></div>
+          <div class="mini"><div class="k">Разрушает</div><div class="v" style="font-size:14px">Молчание в стрессе</div></div>
+          <div class="mini"><div class="k">Родовое пары</div><div class="v" style="font-size:14px">Тема опоры</div></div>
+          <div class="mini"><div class="k">Совет</div><div class="v g" style="font-size:14px">Ритуал диалога</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRODUCT SCREENS ============ -->
+<section id="screens" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Экраны продукта <span class="num"></span></span>
+    <h2 class="title rv d1">Как это <span class="hl">выглядит в руках</span></h2>
+    <p class="lead rv d2" style="margin-bottom:34px">Три ключевых экрана пользовательского пути. Содержимое — демонстрационное.</p>
+    <div class="phones rv d2">
+      <div>
+        <div class="phone">
+          <div class="pscreen">
+            <div class="pshead"><div class="ptitle">Выбрать разбор</div><div class="psub">шаг 1/3</div></div>
+            <div class="popt sel"><span class="pc"></span><span>Кто я — ядро личности</span></div>
+            <div class="popt"><span class="pc"></span><span>Любовь и совместимость</span></div>
+            <div class="popt"><span class="pc"></span><span>Деньги и реализация</span></div>
+            <div class="popt"><span class="pc"></span><span>Родовые сценарии</span><small>Premium</small></div>
+            <div class="popt"><span class="pc"></span><span>Периоды жизни</span><small>Premium</small></div>
+            <div class="popt"><span class="pc"></span><span>Совместимость пары</span></div>
+            <div class="pbtn">Продолжить</div>
+          </div>
+        </div>
+        <div class="pname">Выбор разбора</div>
+      </div>
+      <div>
+        <div class="phone">
+          <div class="pscreen">
+            <div class="pshead"><div class="ptitle">Ваш тариф</div><div class="psub">шаг 3/3</div></div>
+            <div class="prow"><span>Basic · разовый</span><b>$9</b></div>
+            <div class="prow sel"><span>Premium · подписка <span class="tg">выгодно</span></span><b>$19</b></div>
+            <div class="prow"><span>Couple · разбор пары</span><b>$24</b></div>
+            <div class="ptot"><span>К оплате сегодня</span><b>$19<span style="font-size:11px;color:var(--muted)">/мес</span></b></div>
+            <div class="pbtn">Оплатить · Apple&nbsp;Pay</div>
+          </div>
+        </div>
+        <div class="pname">Тарифы / оплата</div>
+      </div>
+      <div>
+        <div class="phone">
+          <div class="pscreen">
+            <div class="pshead"><div class="ptitle">AI-наставник</div><div class="psub">сегодня</div></div>
+            <div class="pday"><div class="pk">Фокус дня</div><div class="pv">День для решений, не для сомнений</div></div>
+            <div class="bub ai">Привет, Анна. Сегодня твой период усиливает интуицию — хороший день закрыть подвисший выбор.</div>
+            <div class="bub me">А что с деньгами на этой неделе?</div>
+            <div class="bub ai">Без резких трат. Сильная роль недели — эксперт: упакуй знание в оффер.</div>
+          </div>
+        </div>
+        <div class="pname">Ежедневный AI-наставник</div>
+      </div>
+    </div>
+    <p class="screen-cap rv d3">Совместимость пары — отдельный экран выше (раздел «Совместимость»).</p>
+  </div>
+</section>
+
+<!-- ============ 12 · MVP ============ -->
+<section id="mvp">
+  <div class="wrap">
+    <span class="eyebrow rv">MVP Scope <span class="num">/ 12</span></span>
+    <h2 class="title rv d1">Жёсткий <span class="hl">фокус первой версии</span></h2>
+    <p class="lead rv d2" style="margin-bottom:34px">Один расчётный движок, базовая психология и два сильных продукта. Меньше риска, быстрее запуск.</p>
+    <div class="split rv d2">
+      <div class="listcard">
+        <h3><span class="tag go">Входит в MVP</span></h3>
+        <ul class="checks">
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Telegram-бот / Web App</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Дата, время, место рождения</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Базовый профиль личности</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>22 аркана / матрица</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Западная астрология · нумерология</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Совместимость пары</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>AI-интерпретация</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Оплата · личный кабинет</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>История отчётов</li>
+        </ul>
+      </div>
+      <div class="listcard">
+        <h3><span class="tag later">Не входит</span></h3>
+        <ul class="checks muted">
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#727272" stroke-width="1.5"/><path d="M8 12h8" stroke="#727272" stroke-width="1.6" stroke-linecap="round"/></svg>Полноценный B2B</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#727272" stroke-width="1.5"/><path d="M8 12h8" stroke="#727272" stroke-width="1.6" stroke-linecap="round"/></svg>Мобильные приложения</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#727272" stroke-width="1.5"/><path d="M8 12h8" stroke="#727272" stroke-width="1.6" stroke-linecap="round"/></svg>Сложный HR-модуль</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#727272" stroke-width="1.5"/><path d="M8 12h8" stroke="#727272" stroke-width="1.6" stroke-linecap="round"/></svg>Marketplace экспертов</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#727272" stroke-width="1.5"/><path d="M8 12h8" stroke="#727272" stroke-width="1.6" stroke-linecap="round"/></svg>Live-консультации</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#727272" stroke-width="1.5"/><path d="M8 12h8" stroke="#727272" stroke-width="1.6" stroke-linecap="round"/></svg>Медицинские / психологические диагнозы</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AUDIENCE 25-44 ============ -->
+<section id="audience" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Аудитория <span class="num"></span></span>
+    <h2 class="title rv d1">Ядро — <span class="hl">женщины 25–44</span></h2>
+    <p class="lead rv d2" style="margin-bottom:26px">Уже покупают самопознание, отношения и личную трансформацию — спрос не нужно создавать.</p>
+    <div class="persona rv d2" style="margin-bottom:18px">
+      <div class="pav"></div>
+      <div class="pmeta">
+        <div class="pn">Аня, 31</div>
+        <div class="pt">Ядровой пользователь · self-discovery</div>
+        <div class="ptags"><span>Читает психологию и отношения</span><span>Платит за «про меня»</span><span>Делится в соцсетях</span><span>Дарит разборы близким</span></div>
+      </div>
+    </div>
+    <div class="grid g3 rv d3">
+      <div class="card lift"><span class="idx" style="color:var(--violet)">01 · Боль</span><h3 style="font-size:20px;margin:12px 0 0">Хочу понять</h3><ul class="aud-list"><li>себя по-настоящему</li><li>свои отношения</li><li>почему повторяются сценарии</li><li>и получить красивый персональный ответ</li></ul></div>
+      <div class="card lift"><span class="idx" style="color:var(--gold)">02 · Почему платит</span><h3 style="font-size:20px;margin:12px 0 0">Эмоциональная ценность</h3><ul class="aud-list"><li>подарок себе, подруге, партнёру</li><li>желание получить «про меня»</li><li>высокий потенциал шеринга</li></ul></div>
+      <div class="card lift"><span class="idx" style="color:var(--blue)">03 · Почему возвращается</span><h3 style="font-size:20px;margin:12px 0 0">Продукт не кончается</h3><ul class="aud-list"><li>ежедневные рекомендации</li><li>совместимость и периоды</li><li>новые отчёты и AI-наставник</li></ul></div>
+    </div>
+    <div class="hypo rv d3"><span class="badge badge--sym">Гипотеза MVP</span><span>Совместимость = виральный вход (≈2× через партнёра и подруг). Проверяем на первых пользователях, а не выдаём за факт.</span></div>
+  </div>
+</section>
+
+<!-- ============ 14 · MONETIZATION ============ -->
+<section id="monetization" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Бизнес-модель <span class="num">/ 14</span></span>
+    <h2 class="title rv d1">Цифровой продукт с <span class="hl">высокой маржой</span></h2>
+    <p class="lead rv d2" style="margin-bottom:28px">От импульсной покупки до подписки и white-label. B2B — позже, после product-market fit. Цены — пример позиционирования.</p>
+    <div class="tiers rv d2">
+      <div class="tier"><div class="tn">Basic</div><div class="tp">$9</div><div class="tu">разовый</div><ul><li>Отчёт «Кто я?»</li><li>Ядро личности</li><li>3 таланта</li></ul></div>
+      <div class="tier"><div class="tn">Deep</div><div class="tp">$29</div><div class="tu">разовый</div><ul><li>Всё из Basic</li><li>Деньги и любовь</li><li>Родовой сценарий</li></ul></div>
+      <div class="tier feat"><div class="tn">Premium</div><div class="tp">$19<span style="font-size:13px">/мес</span></div><div class="tu">подписка · $149/год</div><ul><li>Полный профиль</li><li>Периоды жизни</li><li>Ежедневный навигатор</li><li>Обновления карты</li></ul></div>
+      <div class="tier"><div class="tn">Couple</div><div class="tp">$24</div><div class="tu">пара</div><ul><li>Дашборд совместимости</li><li>Зоны роста и риска</li><li>Родовое пары</li></ul></div>
+      <div class="tier"><div class="tn">Pro / Expert</div><div class="tp">$99+</div><div class="tu">white-label</div><ul><li>Глубокий разбор</li><li>Семейный отчёт</li><li>White-label / API</li></ul></div>
+    </div>
+    <div class="streams rv d3">
+      <div class="stream"><div class="sh"><span class="st">Разовые отчёты</span><span class="sw">сейчас</span></div><ul><li>Личность</li><li>Совместимость</li><li>Деньги / карьера</li><li>Прогноз периода</li></ul></div>
+      <div class="stream"><div class="sh"><span class="st">Подписка</span><span class="sw">сейчас</span></div><ul><li>Ежедневный AI-наставник</li><li>Обновления профиля</li><li>Новые сферы</li><li>История отчётов</li></ul></div>
+      <div class="stream"><div class="sh"><span class="st">Пара</span><span class="sw">рост</span></div><ul><li>Приводит 2-го человека</li><li>Сильный эмоц. триггер</li><li>Подарок и шеринг</li></ul></div>
+      <div class="stream later"><div class="sh"><span class="st">B2B</span><span class="sw">этап 4</span></div><ul><li>HR-профилирование</li><li>Команды</li><li>Совместимость партнёров</li><li>White-label / API</li></ul></div>
+    </div>
+    <div class="funnel rv d3">
+      <span>Апселл: Basic → Deep → Premium → Couple</span><i>·</i><span>LTV растёт через подписку и допы</span><i>·</i><span>Маржа 90%+ — цена в генерации, не в товаре</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ROADMAP ============ -->
+<section id="roadmap" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Roadmap <span class="num"></span></span>
+    <h2 class="title rv d1">От отчёта к <span class="hl">экосистеме</span></h2>
+    <div class="road rv d2" style="margin-top:24px">
+      <div class="rstage live"><div class="dot">1</div><div class="ph">Этап 1 · MVP</div><h3>Ядро</h3><ul><li>Личностный отчёт «Кто я?»</li><li>Совместимость пары</li><li>Платный расширенный отчёт</li><li>Telegram-бот / Web App</li></ul></div>
+      <div class="rstage"><div class="dot">2</div><div class="ph">Этап 2 · Deep</div><h3>Глубокие модули</h3><ul><li>Родовые сценарии</li><li>Деньги и реализация</li><li>Любовь и страхи</li><li>Периоды жизни</li></ul></div>
+      <div class="rstage"><div class="dot">3</div><div class="ph">Этап 3 · Multimodal</div><h3>Мультимодальность</h3><ul><li>Фото руки и лица</li><li>Голос и почерк</li><li>Дневники снов, МАК</li><li>Поведенческие данные</li></ul></div>
+      <div class="rstage"><div class="dot">4</div><div class="ph">Этап 4 · Ecosystem</div><h3>Экосистема</h3><ul><li>Мобильное приложение</li><li>Подписка и B2B</li><li>Публичный API</li><li>Личный AI-наставник</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 · TRACTION ============ -->
+<section id="traction">
+  <div class="wrap">
+    <span class="eyebrow rv">Почему выстрелит <span class="num">/ 15</span></span>
+    <h2 class="title rv d1">Тема себя + <span class="hl">виральность</span> + маржа</h2>
+    <div class="grid g4 rv d2" style="margin:14px 0 22px">
+      <div class="card"><div class="n grad-txt" style="font-family:var(--font-display);font-weight:800;font-size:34px">∞</div><p style="margin-top:8px">Вечный интерес людей к самим себе</p></div>
+      <div class="card"><div class="n grad-txt" style="font-family:var(--font-display);font-weight:800;font-size:34px">2×</div><p style="margin-top:8px">Совместимость приводит второго пользователя</p></div>
+      <div class="card"><div class="n gold-txt" style="font-family:var(--font-display);font-weight:800;font-size:34px">90%+</div><p style="margin-top:8px">Маржинальность цифрового продукта</p></div>
+      <div class="card"><div class="n grad-txt" style="font-family:var(--font-display);font-weight:800;font-size:34px">3</div><p style="margin-top:8px">Платформы из одной кодовой базы</p></div>
+    </div>
+    <div class="grid g4 rv d3">
+      <div class="card lift"><h3 style="font-size:18px">Эмоциональный retention</h3><p>Продукт про тебя — к нему возвращаются, его сохраняют и обсуждают.</p></div>
+      <div class="card lift"><h3 style="font-size:18px">Каналы блогеров</h3><p>Дёшево продаётся через инфлюенсеров, психологов и астрологов.</p></div>
+      <div class="card lift"><h3 style="font-size:18px">Масштаб по языкам</h3><p>AI-слой переводится на новые рынки почти без затрат.</p></div>
+      <div class="card lift"><h3 style="font-size:18px">Гибкий форм-фактор</h3><p>Telegram, web и mobile — там, где аудитория уже есть.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 · RISKS ============ -->
+<section id="risks" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv">Риски и защита <span class="num">/ 16</span></span>
+    <h2 class="title rv d1">Каждый риск <span class="hl">закрыт решением</span></h2>
+    <p class="lead rv d2" style="margin-bottom:30px">Мы заранее знаем уязвимые места — и у каждого есть продуктовая защита.</p>
+    <div class="risk rv d2">
+      <div class="rrow"><div class="rx"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>«Это просто гороскоп»</div><div class="rs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Позиционирование personality intelligence, а не предсказания.</div></div>
+      <div class="rrow"><div class="rx"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Недоверие к эзотерике</div><div class="rs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Прозрачная маркировка методов и психологический слой.</div></div>
+      <div class="rrow"><div class="rx"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Юридические претензии</div><div class="rs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Дисклеймеры, отказ от медицинских и психологических диагнозов.</div></div>
+      <div class="rrow"><div class="rx"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Слабый retention</div><div class="rs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Ежедневный AI-наставник, периоды, совместимость, новые отчёты.</div></div>
+      <div class="rrow" style="grid-column:1/-1"><div class="rx"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5M12 3l9 16H3l9-16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Перегруз MVP</div><div class="rs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Жёсткий scope первой версии — никакого B2B, mobile или CV в MVP.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 17 · TECH ============ -->
+<section id="tech">
+  <div class="wrap">
+    <span class="eyebrow rv">Для разработчика <span class="num">/ 17</span></span>
+    <h2 class="title rv d1">Техническая <span class="hl">логика системы</span></h2>
+    <p class="lead rv d2" style="margin-bottom:30px">Ключевой принцип: детерминированный расчётный движок отдельно, AI-слой отдельно. Это даёт точность, контроль и предсказуемые расходы.</p>
+    <div class="stack rv d2">
+      <div class="tbox"><div class="tk">Core</div><h4>Calculation Engine</h4><p>Оркестратор всех расчётов и нормализация в единый формат.</p></div>
+      <div class="tbox"><div class="tk">Astro</div><h4>Swiss Ephemeris</h4><p>Натальные карты, транзиты, джйотиш, Ба Цзы.</p></div>
+      <div class="tbox"><div class="tk">Modules</div><h4>Нумерология · 22 аркана</h4><p>Числовые и матричные алгоритмы.</p></div>
+      <div class="tbox"><div class="tk">Data</div><h4>База интерпретаций</h4><p>Структурированные значения по всем системам.</p></div>
+      <div class="tbox"><div class="tk">AI</div><h4>AI Layer + Prompt Templates</h4><p>Перевод расчётов в текст по строгим шаблонам.</p></div>
+      <div class="tbox"><div class="tk">Storage</div><h4>User Profile Storage</h4><p>Профили, согласия, история и приватность.</p></div>
+      <div class="tbox"><div class="tk">Output</div><h4>Report Generator</h4><p>Сборка отчётов и экспорт в PDF / web.</p></div>
+      <div class="tbox"><div class="tk">Payments</div><h4>Payment System</h4><p>Разовые покупки, подписки, B2B-биллинг.</p></div>
+      <div class="tbox"><div class="tk">Ops</div><h4>Admin Panel</h4><p>Контент, валидация выводов, аналитика.</p></div>
+      <div class="tbox"><div class="tk">Clients</div><h4>Telegram · Web App · Mobile</h4><p>Единое API для всех клиентов.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 18 · FUTURE PRIORITY ============ -->
+<section id="future">
+  <div class="wrap">
+    <span class="eyebrow rv">Источники на будущее <span class="num">/ 18</span></span>
+    <h2 class="title rv d1">Что добавлять <span class="hl">и когда</span></h2>
+    <p class="lead rv d2" style="margin-bottom:30px">Дополнительные методы из базы знаний, сгруппированные по приоритету: ценность, сложность, риск и рекомендация по каждому.</p>
+    <div class="prio rv d2">
+      <div class="pgroup">
+        <div class="pghead"><h3>Высокий приоритет</h3><span class="pgbadge hi">MVP / v1</span></div>
+        <table class="ptable">
+          <thead><tr><th>Метод</th><th>Ценность</th><th>Сложность</th><th>Риск</th><th>Рекомендация</th></tr></thead>
+          <tbody>
+            <tr><td class="m">Big Five / HEXACO</td><td>Достоверное ядро профиля</td><td>Низкая</td><td>Низкий</td><td><span class="rec do">Делать</span></td></tr>
+            <tr><td class="m">Нумерология</td><td>Лёгкий доп. слой</td><td>Низкая</td><td>Низкий</td><td><span class="rec do">Делать</span></td></tr>
+            <tr><td class="m">22 аркана + астрология</td><td>Каркас портрета</td><td>Средняя</td><td>Средний</td><td><span class="rec do">Делать</span></td></tr>
+            <tr><td class="m">Совместимость пары</td><td>Виральность, рост</td><td>Средняя</td><td>Низкий</td><td><span class="rec do">Делать</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pgroup">
+        <div class="pghead"><h3>Средний приоритет</h3><span class="pgbadge md">Premium-модули</span></div>
+        <table class="ptable">
+          <thead><tr><th>Метод</th><th>Ценность</th><th>Сложность</th><th>Риск</th><th>Рекомендация</th></tr></thead>
+          <tbody>
+            <tr><td class="m">Родовые сценарии</td><td>Глубина, эмоц. отклик</td><td>Средняя</td><td>Средний</td><td><span class="rec do">Делать</span></td></tr>
+            <tr><td class="m">Анализ голоса</td><td>Поведенческий сигнал</td><td>Высокая</td><td>Средний</td><td><span class="rec test">Тестировать</span></td></tr>
+            <tr><td class="m">Дневники снов</td><td>Retention, саморефлексия</td><td>Средняя</td><td>Низкий</td><td><span class="rec test">Тестировать</span></td></tr>
+            <tr><td class="m">Джйотиш · Ба Цзы · HD</td><td>Глубина для фанатов</td><td>Высокая</td><td>Средний</td><td><span class="rec wait">Отложить</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pgroup">
+        <div class="pghead"><h3>Низкий / экспериментальный</h3><span class="pgbadge lo">Развлекательные</span></div>
+        <table class="ptable">
+          <thead><tr><th>Метод</th><th>Ценность</th><th>Сложность</th><th>Риск</th><th>Рекомендация</th></tr></thead>
+          <tbody>
+            <tr><td class="m">Хиромантия (фото руки)</td><td>Игровой вовлекающий слой</td><td>Высокая (CV)</td><td>Высокий</td><td><span class="rec test">Тестировать</span></td></tr>
+            <tr><td class="m">Физиогномика</td><td>Развлечение, виральность</td><td>Высокая (CV)</td><td>Высокий</td><td><span class="rec wait">Отложить</span></td></tr>
+            <tr><td class="m">Графология</td><td>Игровая интроспекция</td><td>Высокая</td><td>Высокий</td><td><span class="rec wait">Отложить</span></td></tr>
+            <tr><td class="m">Метафорические карты</td><td>Рефлексия, коучинг</td><td>Средняя</td><td>Средний</td><td><span class="rec test">Тестировать</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STATUS ============ -->
+<section id="status">
+  <div class="wrap">
+    <span class="eyebrow rv">Статус <span class="num"></span></span>
+    <h2 class="title rv d1">Что уже есть <span class="hl">и что нужно</span></h2>
+    <p class="lead rv d2" style="margin-bottom:34px">Честный статус проекта на сегодня.</p>
+    <div class="split rv d2">
+      <div class="listcard">
+        <h3><span class="tag go">Уже есть</span></h3>
+        <ul class="checks">
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Концепция и структура продукта</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Понимание целевой аудитории</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Команда / разработчик</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Telegram-first подход и опыт в Telegram-продуктах</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Понимание воронок и трафика</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ababab" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#ababab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Продуктовая логика MVP</li>
+        </ul>
+      </div>
+      <div class="listcard">
+        <h3><span class="tag later">Нужно</span></h3>
+        <ul class="checks muted">
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#c6c6c6" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="#c6c6c6" stroke-width="1.6" stroke-linecap="round"/></svg>Финализация расчётного engine</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#c6c6c6" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="#c6c6c6" stroke-width="1.6" stroke-linecap="round"/></svg>UI/UX MVP</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#c6c6c6" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="#c6c6c6" stroke-width="1.6" stroke-linecap="round"/></svg>Юридические дисклеймеры</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#c6c6c6" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="#c6c6c6" stroke-width="1.6" stroke-linecap="round"/></svg>Тестовая аудитория</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#c6c6c6" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="#c6c6c6" stroke-width="1.6" stroke-linecap="round"/></svg>Оплата и аналитика</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#c6c6c6" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="#c6c6c6" stroke-width="1.6" stroke-linecap="round"/></svg>Маркетинговая воронка и бюджет на запуск</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINALE ============ -->
+<section id="finale" data-inv>
+  <div class="wrap">
+    <span class="eyebrow rv" style="justify-content:center">Финал <span class="num"></span></span>
+    <h2 class="fin-h rv d1">МАТРИЦА превращает интерес к себе в <span class="grad-txt">повторяемый цифровой продукт</span>.</h2>
+    <p class="lead rv d2" style="margin:0 auto;text-align:center;max-width:56ch">Не гадание. Не тест. Не чат-бот. А персональный навигатор личности, отношений и жизненных решений.</p>
+    <div class="channels rv d3" style="justify-content:center;max-width:780px;margin:34px auto 0">
+      <span>Women 25–44</span><span>Telegram-first MVP</span><span>High-margin reports</span><span>Subscription potential</span><span>Couple virality</span><span>B2B later</span>
+    </div>
+    <div class="hero-cta rv d4" style="justify-content:center;margin-top:34px">
+      <a href="#snapshot" class="btn btn-primary">Investor Snapshot</a>
+      <button class="btn btn-ghost" onclick="window.print()">Экспорт в PDF</button>
+    </div>
+    <p class="cta-final rv d4">Следующий шаг: MVP → первые пользователи → проверка LTV и retention.</p>
+    <p class="print-disc">МАТРИЦА — продукт самопознания и развлечения. Он не ставит медицинских, психиатрических или иных диагнозов, не гарантирует точность и не предсказывает будущее. Часть включённых методов не имеет научного подтверждения и используется как символический и рефлексивный инструмент.</p>
+  </div>
+</section>
+
+<footer class="footer">
+  <p>МАТРИЦА · Поведенческий профайлинг — концепт-презентация. Продукт предназначен для самопознания и развлечения, не предоставляет медицинских, психологических или иных профессиональных диагнозов и не гарантирует точность прогнозов. Часть включённых методов не имеет научного подтверждения и используется как символический и рефлексивный инструмент.</p>
+</footer>
+
+<script>
+(function(){
+  var rm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* Enable JS-driven reveal only when motion is allowed; otherwise content stays visible by default */
+  if(!rm){ document.body.classList.add('anim'); }
+
+  /* Header shadow + scroll progress */
+  var hdr = document.getElementById('hdr'), prog = document.getElementById('progress');
+  function onScroll(){
+    var st = window.scrollY || document.documentElement.scrollTop;
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    prog.style.transform = 'scaleX(' + (h>0 ? st/h : 0) + ')';
+    hdr.classList.toggle('scrolled', st > 30);
+  }
+  window.addEventListener('scroll', onScroll, {passive:true}); onScroll();
+
+  /* Nav + auto-numbering + investor mode */
+  var allSecs = Array.prototype.slice.call(document.querySelectorAll('section[id]'));
+  var nav = document.getElementById('dotnav');
+  var labels = {hero:'Intro',snapshot:'Snapshot',problem:'Проблема',solution:'Решение','not-horoscope':'Не гороскоп',architecture:'Архитектура',sources:'Источники',honesty:'Честность',dashboard:'Дашборд',journey:'Путь',products:'Продукты',report:'Отчёт',compatibility:'Совместимость',screens:'Экраны',mvp:'MVP',audience:'Аудитория',monetization:'Бизнес-модель',roadmap:'Roadmap',traction:'Рост',risks:'Риски',tech:'Tech',future:'Будущее',status:'Статус',finale:'Финал'};
+  var activeIO = null, visSecs = [];
+  function pad(n){ return (n<10?'0':'')+n; }
+  function rebuild(){
+    visSecs = allSecs.filter(function(s){ return getComputedStyle(s).display !== 'none'; });
+    nav.innerHTML = '';
+    visSecs.forEach(function(s,i){
+      var a = document.createElement('a'); a.href = '#' + s.id;
+      a.innerHTML = '<span>' + (labels[s.id]||s.id) + '</span>'; nav.appendChild(a);
+      var num = s.querySelector('.eyebrow .num'); if(num){ num.textContent = '/ ' + pad(i+1); }
+    });
+    var dots = Array.prototype.slice.call(nav.children);
+    if(activeIO){ activeIO.disconnect(); }
+    activeIO = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ var i = visSecs.indexOf(e.target); dots.forEach(function(d,k){ d.classList.toggle('on', k===i); }); } });
+    }, {threshold:.5});
+    visSecs.forEach(function(s){ activeIO.observe(s); });
+  }
+  rebuild();
+
+  /* Полная / Investor toggle */
+  var seg = document.getElementById('seg');
+  function applyMode(inv){
+    if(seg){ Array.prototype.forEach.call(seg.children, function(b){ b.classList.toggle('on', (b.getAttribute('data-mode')==='inv')===inv); }); }
+    document.body.classList.toggle('inv', inv);
+    document.querySelectorAll('.rv,.appbody,.report,.metrics').forEach(function(el){ el.classList.add('in'); });
+    rebuild();
+  }
+  if(seg){
+    seg.addEventListener('click', function(e){
+      var btn = e.target.closest('button[data-mode]'); if(!btn) return;
+      applyMode(btn.getAttribute('data-mode') === 'inv');
+      window.scrollTo(0,0);
+    });
+  }
+  /* Deep-link: open directly in investor view (used for the investor PDF) */
+  if(location.hash === '#investor'){ applyMode(true); }
+
+  /* Reveal on scroll */
+  var rvs = document.querySelectorAll('.rv');
+  if(rm){ rvs.forEach(function(el){ el.classList.add('in'); }); }
+  else {
+    var rio = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); rio.unobserve(e.target);} });
+    }, {threshold:.18, rootMargin:'0px 0px -8% 0px'});
+    rvs.forEach(function(el){ rio.observe(el); });
+  }
+
+  /* Bars: trigger scaleX when their section reveals */
+  var barWraps = document.querySelectorAll('.appbody, .report, .metrics');
+  var bio = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); bio.unobserve(e.target);} });
+  }, {threshold:.25});
+  barWraps.forEach(function(el){ bio.observe(el); });
+
+  /* Starfield canvas */
+  var cv = document.getElementById('stars'), ctx = cv.getContext('2d'), stars = [], raf, running=false, W, H, DPR=Math.min(devicePixelRatio||1,2);
+  function resize(){ W=cv.width=innerWidth*DPR; H=cv.height=innerHeight*DPR; cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px'; build(); }
+  function build(){
+    stars=[]; var n=Math.round((innerWidth*innerHeight)/14000);
+    for(var i=0;i<n;i++){ stars.push({x:Math.random()*W,y:Math.random()*H,r:(Math.random()*1.3+.3)*DPR,a:Math.random(),s:Math.random()*.5+.2,vy:(Math.random()*.12+.02)*DPR,c:Math.random()>.85?'198,198,198':(Math.random()>.5?'140,140,140':'158,158,158')}); }
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<stars.length;i++){ var p=stars[i]; p.a+=p.s*.02; p.y+=p.vy; if(p.y>H){p.y=-2;p.x=Math.random()*W;}
+      var al=.25+Math.abs(Math.sin(p.a))*.5;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fillStyle='rgba('+p.c+','+al+')'; ctx.shadowBlur=p.r*3; ctx.shadowColor='rgba('+p.c+',.8)'; ctx.fill();
+    }
+    ctx.shadowBlur=0; raf=requestAnimationFrame(draw);
+  }
+  function start(){ if(running||rm)return; running=true; draw(); }
+  function stop(){ running=false; cancelAnimationFrame(raf); }
+  if(!rm){ resize(); start(); window.addEventListener('resize', resize);
+    document.addEventListener('visibilitychange', function(){ document.hidden?stop():start(); });
+  }
+
+  /* Magnetic primary buttons */
+  if(matchMedia('(hover:hover) and (pointer:fine)').matches && !rm){
+    document.querySelectorAll('.btn-primary').forEach(function(b){
+      b.addEventListener('mousemove', function(e){ var r=b.getBoundingClientRect(); b.style.transform='translate('+((e.clientX-r.left-r.width/2)*.18)+'px,'+((e.clientY-r.top-r.height/2)*.28-2)+'px)'; });
+      b.addEventListener('mouseleave', function(){ b.style.transform=''; });
+    });
+  }
+})();
+</script>
+</body>
+</html>

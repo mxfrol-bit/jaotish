@@ -16,6 +16,10 @@ from pathlib import Path
 _LANDING_FILE = Path(__file__).resolve().parents[1] / "landing.html"
 _LANDING_HTML = _LANDING_FILE.read_text(encoding="utf-8") if _LANDING_FILE.exists() else ""
 
+# Инвесторская презентация (24 секции), приведена к чёрно-белому из премиум-референса.
+_DECK_FILE = Path(__file__).resolve().parents[1] / "deck.html"
+_DECK_HTML = _DECK_FILE.read_text(encoding="utf-8") if _DECK_FILE.exists() else ""
+
 from fastapi import APIRouter, BackgroundTasks, Form, Query
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
@@ -489,6 +493,15 @@ def landing() -> str:
         return _LANDING_HTML
     return _page("Матрица", f"{_nav()}<div class=wrap><div class=hero><h1>Матрица</h1>"
                  "<a class=cta href='/proof'>Узнать больше</a></div></div>")
+
+
+@router.get("/deck", response_class=HTMLResponse)
+@router.get("/pitch", response_class=HTMLResponse)
+def deck() -> str:
+    # Инвесторская презентация (чёрно-белая). Самодостаточный HTML.
+    if _DECK_HTML:
+        return _DECK_HTML
+    return _page("Презентация", f"{_nav()}<div class=wrap><div class=hero><h1>Презентация недоступна</h1></div></div>")
 
 
 @router.get("/about", response_class=HTMLResponse)
