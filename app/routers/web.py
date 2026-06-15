@@ -729,6 +729,162 @@ def _render_sections(full: str) -> tuple[str, str]:
     return toc_html, "".join(cards) or f"<div class=sec>{_md_to_html(full)}</div>"
 
 
+# ---------------- дашборд личности (живой профиль из расчёта) ----------------
+_LP_WORD = {1: "Лидер", 2: "Дипломат", 3: "Творец", 4: "Архитектор", 5: "Искатель",
+            6: "Хранитель", 7: "Аналитик", 8: "Стратег", 9: "Наставник",
+            11: "Визионер", 22: "Мастер", 33: "Учитель"}
+_EL_WORD = {"огонь": "Двигатель", "земля": "Строитель", "воздух": "Связной", "вода": "Эмпат"}
+_EL_LOVE = {"огонь": "страсть и темп", "земля": "надёжность и быт", "воздух": "свобода и разговор", "вода": "глубина больше флирта"}
+_DIG_EL = {1: "огонь", 9: "огонь", 5: "воздух", 3: "воздух", 2: "вода", 7: "вода",
+           4: "земля", 8: "земля", 6: "земля", 11: "воздух", 22: "земля", 33: "вода"}
+
+
+def _elements_balance(mods: dict) -> dict:
+    w = mods.get("western_astrology") or {}
+    eb = w.get("elements_balance")
+    if eb and w.get("calculation_status") == "calculated":
+        return {k: int(eb.get(k, 0)) for k in ("огонь", "земля", "воздух", "вода")}
+    num = mods.get("numerology") or {}
+    bal = {"огонь": 0, "земля": 0, "воздух": 0, "вода": 0}
+    for k in ("life_path", "destiny_number", "soul_number", "personality_number", "birthday_number"):
+        v = num.get(k)
+        if isinstance(v, int):
+            bal[_DIG_EL.get(v, "воздух")] += 1
+    if sum(bal.values()) == 0:
+        bal = {"огонь": 1, "земля": 1, "воздух": 1, "вода": 1}
+    return bal
+
+
+def _profile_metrics(data: dict) -> dict:
+    """Детерминированно выводим архетип, целостность и 6 шкал из посчитанного баланса стихий."""
+    mods = _modules_of(data)
+    bal = _elements_balance(mods)
+    tot = sum(bal.values()) or 1
+    f, e, a, w = (bal["огонь"] / tot, bal["земля"] / tot, bal["воздух"] / tot, bal["вода"] / tot)
+
+    def sc(x: float) -> int:
+        return max(18, min(97, round(30 + x * 170)))
+
+    scores = [
+        ("Энергия действия", sc(f * 0.8 + a * 0.2)),
+        ("Стратегичность", sc(e * 0.55 + a * 0.45)),
+        ("Эмоциональная глубина", sc(w * 0.8 + e * 0.2)),
+        ("Денежная устойчивость", sc(e * 0.7 + f * 0.3)),
+        ("Коммуникация", sc(a * 0.7 + f * 0.3)),
+        ("Интуиция", sc(w * 0.65 + a * 0.35)),
+    ]
+    mean = 0.25
+    sd = (sum((x - mean) ** 2 for x in (f, e, a, w)) / 4) ** 0.5
+    wholeness = max(45, min(96, round(94 - sd * 180)))
+
+    num = mods.get("numerology") or {}
+    lp = num.get("life_path")
+    dom = max(bal, key=bal.get)
+    archetype = f"{_LP_WORD.get(lp, 'Искатель')} · {_EL_WORD.get(dom, 'Связной')}"
+    arc = (mods.get("arcana_22") or {}).get("core_arcana") or {}
+    py = num.get("personal_year")
+    tiles = [
+        ("Ядро", arc.get("name") or _LP_WORD.get(lp, "—")),
+        ("Любовь", _EL_LOVE.get(dom, "—")),
+        ("Реализация", _LP_WORD.get(lp, "—") + "-роль"),
+        ("Период", f"личный год {py}" if py else "—"),
+    ]
+    return {"archetype": archetype, "wholeness": wholeness, "scores": scores, "tiles": tiles, "dom": dom}
+
+
+_DASH_CSS = """
+:root{--bg:#070708;--ink:#f6f6f6;--ink2:#cfcfcf;--mut:#8a8a8a;--line:rgba(255,255,255,.12);
+ --soft:rgba(255,255,255,.045);--grad:linear-gradient(120deg,#5b8cff,#9d7bff 55%,#caa6ff);
+ --ease:cubic-bezier(.22,.61,.36,1);
+ --disp:'Bricolage Grotesque','Space Grotesk',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink2);font-family:'Inter',system-ui,sans-serif;line-height:1.6;
+ -webkit-font-smoothing:antialiased}
+.glow{position:fixed;border-radius:50%;filter:blur(100px);opacity:.5;pointer-events:none;z-index:0}
+.glow.a{width:560px;height:560px;top:-160px;right:-120px;background:radial-gradient(circle,#5b8cff3d,transparent 70%)}
+.glow.b{width:520px;height:520px;bottom:-180px;left:-120px;background:radial-gradient(circle,#9d7bff33,transparent 70%)}
+.wrap{position:relative;z-index:2;max-width:1000px;margin:0 auto;padding:30px 22px 90px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:40px}
+.brand{font-family:var(--disp);font-weight:800;font-size:18px;color:var(--ink);letter-spacing:.02em}
+.top a{color:var(--mut);font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.12em;text-decoration:none}
+.top a:hover{color:var(--ink)}
+.kick{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#a78bfa;margin-bottom:14px}
+.head{display:flex;flex-wrap:wrap;gap:26px 40px;align-items:flex-end;justify-content:space-between;
+ border-bottom:1px solid var(--line);padding-bottom:30px;margin-bottom:34px}
+.name{font-family:var(--disp);font-weight:800;font-size:clamp(34px,6vw,64px);line-height:.98;color:var(--ink);letter-spacing:-.02em}
+.arche{font-family:var(--mono);font-size:14px;letter-spacing:.06em;color:var(--ink2);margin-top:12px}
+.ring{text-align:center;flex:none}
+.ring .num{font-family:var(--disp);font-weight:800;font-size:54px;
+ background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.ring .lbl{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut);margin-top:4px}
+.bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px 40px;margin:6px 0 40px}
+.bar .row{display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px}
+.bar .row .v{font-family:var(--mono);color:var(--ink)}
+.track{height:6px;background:var(--soft);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.fill{height:100%;width:0;background:var(--grad);border-radius:999px;transition:width 1.1s var(--ease)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:42px}
+.tile{border:1px solid var(--line);border-radius:18px;padding:18px 20px;background:var(--soft)}
+.tile .t{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--mut)}
+.tile .d{font-family:var(--disp);font-size:19px;color:var(--ink);margin-top:8px;letter-spacing:-.01em}
+.acts{display:flex;flex-wrap:wrap;gap:12px}
+.acts a{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.1em;text-decoration:none;
+ padding:13px 20px;border-radius:999px;border:1px solid var(--line);color:var(--ink2);transition:transform .2s var(--ease),border-color .2s var(--ease)}
+.acts a:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.4);color:var(--ink)}
+.acts a.go{background:var(--ink);color:#070708;border-color:var(--ink)}
+.foot{color:var(--mut);font-size:12px;font-family:var(--mono);margin-top:40px;letter-spacing:.04em}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}.acts a{transition:none}}
+"""
+
+
+@router.get("/profile/{pid}", response_class=HTMLResponse)
+def dashboard(pid: str) -> str:
+    data = database.get_profile(pid)
+    if data is None:
+        return _spinner_page(pid, "Собираю профиль…", "Почти готово — страница обновится сама.")
+    ui = data.get("user_input") or {}
+    m = _profile_metrics(data)
+    name = html.escape(ui.get("name") or "Профиль")
+    bars = "".join(
+        f"<div class=bar><div class=row><span>{html.escape(lbl)}</span><span class=v>{val}</span></div>"
+        f"<div class=track><div class=fill data-v='{val}'></div></div></div>"
+        for lbl, val in m["scores"]
+    )
+    tiles = "".join(
+        f"<div class=tile><div class=t>{html.escape(t)}</div><div class=d>{html.escape(str(d))}</div></div>"
+        for t, d in m["tiles"]
+    )
+    fonts = (
+        "<link rel=preconnect href='https://fonts.googleapis.com'>"
+        "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
+        "family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Inter:wght@400;500;600&"
+        "family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap'>"
+    )
+    body = f"""<div class=glow a></div><div class=glow b></div><div class=wrap>
+      <div class=top><span class=brand>Матрица</span>
+        <a href='/r/{pid}'>полный разбор →</a></div>
+      <div class=kick>Профиль личности</div>
+      <div class=head>
+        <div><div class=name>{name}</div><div class=arche>Архетип · {html.escape(m['archetype'])}</div></div>
+        <div class=ring><div class=num>{m['wholeness']}</div><div class=lbl>Целостность</div></div>
+      </div>
+      <div class=bars>{bars}</div>
+      <div class=tiles>{tiles}</div>
+      <div class=acts>
+        <a class=go href='/r/{pid}'>Открыть разбор</a>
+        <a href='/chart/{pid}.png' target=_blank>Карта неба</a>
+        <a href='/voice/{pid}.mp3'>Слушать</a>
+        <a href='/compat'>Совместимость</a>
+      </div>
+      <p class=foot>Шкалы выведены из рассчитанного баланса стихий твоей карты — детерминированно, не случайно.</p>
+    </div>
+    <script>window.addEventListener('load',function(){{requestAnimationFrame(function(){{
+      document.querySelectorAll('.fill').forEach(function(f){{f.style.width=f.dataset.v+'%';}});}});}});</script>"""
+    return (f"<!doctype html><html lang=ru><head><meta charset=utf-8>"
+            f"<meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"<title>{name} · Профиль · Матрица</title>{fonts}<style>{_DASH_CSS}</style></head>"
+            f"<body>{body}</body></html>")
+
+
 @router.get("/r/{pid}", response_class=HTMLResponse)
 def result(pid: str) -> str:
     data = database.get_profile(pid)
@@ -758,6 +914,7 @@ def result(pid: str) -> str:
       <img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>
       {positions}
       <div class=actions>
+        <a class=btnlink href='/profile/{pid}'>Дашборд профиля</a>
         <a class=btnlink href='/voice/{pid}.mp3'>Слушать разбор</a>
         <a class=btnlink href='/'>Новый разбор</a>
         <a class=btnlink href='/compat'>Совместимость</a>
