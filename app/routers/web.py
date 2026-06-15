@@ -109,20 +109,20 @@ _NATAL_JS = r"""
     var arr=items.map(function(p,i){return {i:i,lon:p.lon};}).sort(function(a,b){return a.lon-b.lon;});
     for(var pass=0;pass<60;pass++){var moved=false;
       for(var k=0;k<arr.length;k++){var j=(k+1)%arr.length;var gap=((arr[j].lon-arr[k].lon)%360+360)%360;
-        if(arr.length>1&&gap<7){var s=(7-gap)/2;arr[k].lon-=s;arr[j].lon+=s;moved=true;}}
+        if(arr.length>1&&gap<10){var s=(10-gap)/2;arr[k].lon-=s;arr[j].lon+=s;moved=true;}}
       if(!moved)break;}
     var out=[];arr.forEach(function(o){out[o.i]=o.lon;});return out;
   }
   function resize(){
     DPR=Math.min(window.devicePixelRatio||1,2);
     W=cv.clientWidth;H=W;cv.style.height=W+'px';cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
-    cx=W/2;cy=H/2;R=W*0.40;disp=spread(C.positions);
+    cx=W/2;cy=H/2;R=W*0.375;disp=spread(C.positions);
   }
   function ease(x){return 1-Math.pow(1-x,3);}
   function draw(ts){
     if(t0==null)t0=ts;var T=ts-t0;
     ctx.clearRect(0,0,W,H);
-    var rIn=R*0.80,rPl=R*0.64;
+    var rIn=R*0.82,rPl=R*0.60;
     var ringP=reduce?1:ease(Math.min(1,T/650));
     ctx.strokeStyle=HAIR;ctx.lineWidth=1.2;
     ctx.beginPath();ctx.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+ringP*6.2832);ctx.stroke();
@@ -132,22 +132,22 @@ _NATAL_JS = r"""
     ctx.textAlign='center';ctx.textBaseline='middle';
     for(var i=0;i<12;i++){var a0=xy(i*30,rIn),a1=xy(i*30,R);
       ctx.strokeStyle=HAIR;ctx.beginPath();ctx.moveTo(a0[0],a0[1]);ctx.lineTo(a1[0],a1[1]);ctx.stroke();
-      var g=xy(i*30+15,R*1.085);ctx.fillStyle=MUT;ctx.font=(W*0.030)+'px serif';ctx.fillText(SG[i],g[0],g[1]);}
+      var g=xy(i*30+15,R*1.12);ctx.fillStyle=MUT;ctx.font=(W*0.044)+'px serif';ctx.fillText(SG[i],g[0],g[1]);}
     for(var i=0;i<C.positions.length;i++){var p=C.positions[i];var dl=disp[i];
-      var st=reduce?0:300+i*70;var pr=reduce?1:ease(Math.min(1,Math.max(0,(T-st)/720)));
+      var st=reduce?0:300+i*90;var pr=reduce?1:ease(Math.min(1,Math.max(0,(T-st)/820)));
       if(pr<=0)continue;
-      var tg=xy(dl,rPl),s0=xy(dl,R*1.28);
+      var tg=xy(dl,rPl),s0=xy(dl,R*1.32);
       var x=s0[0]+(tg[0]-s0[0])*pr,y=s0[1]+(tg[1]-s0[1])*pr;
-      if(pr>0.55){var ta=xy(p.lon,rIn),tb=xy(p.lon,rIn-R*0.03);ctx.strokeStyle=INK;ctx.lineWidth=0.9;
+      if(pr>0.55){var ta=xy(p.lon,rIn),tb=xy(p.lon,rIn-R*0.035);ctx.strokeStyle=INK;ctx.lineWidth=1;
         ctx.beginPath();ctx.moveTo(ta[0],ta[1]);ctx.lineTo(tb[0],tb[1]);ctx.stroke();}
-      ctx.globalAlpha=pr;ctx.fillStyle=INK;ctx.font=(W*0.036)+'px serif';ctx.fillText(PG[p.k]||'·',x,y);
-      var dg=xy(dl,rPl-R*0.125);ctx.fillStyle=MUT;ctx.font=(W*0.017)+'px monospace';
+      ctx.globalAlpha=pr;ctx.fillStyle=INK;ctx.font=(W*0.050)+'px serif';ctx.fillText(PG[p.k]||'·',x,y);
+      var dg=xy(dl,rPl-R*0.155);ctx.fillStyle=MUT;ctx.font=(W*0.024)+'px monospace';
       ctx.fillText(p.deg+'°'+(p.retro?' R':''),dg[0],dg[1]);ctx.globalAlpha=1;}
-    if(C.asc!=null){var ap=reduce?1:ease(Math.min(1,Math.max(0,(T-900)/600)));
-      if(ap>0){var i0=xy(C.asc,rIn),i1=xy(C.asc,R);ctx.strokeStyle=INK;ctx.lineWidth=1.6*ap;
+    if(C.asc!=null){var ap=reduce?1:ease(Math.min(1,Math.max(0,(T-1000)/600)));
+      if(ap>0){var i0=xy(C.asc,rIn),i1=xy(C.asc,R);ctx.strokeStyle=INK;ctx.lineWidth=2*ap;
         ctx.beginPath();ctx.moveTo(i0[0],i0[1]);ctx.lineTo(i1[0],i1[1]);ctx.stroke();
-        var la=xy(C.asc,R*1.085);ctx.fillStyle=INK;ctx.font='bold '+(W*0.021)+'px sans-serif';ctx.fillText('Asc',la[0],la[1]);}}
-    if(!reduce&&T<2400)requestAnimationFrame(draw);
+        var la=xy(C.asc,R*1.12);ctx.fillStyle=INK;ctx.font='bold '+(W*0.026)+'px sans-serif';ctx.fillText('Asc',la[0],la[1]);}}
+    if(!reduce&&T<2700)requestAnimationFrame(draw);
   }
   function go(){resize();t0=null;requestAnimationFrame(draw);}
   window.addEventListener('resize',function(){go();});
@@ -163,7 +163,8 @@ def _natal_block(data: dict, pid: str) -> str:
         return f"<img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>"
     foot = f"☉ {cj['sun']}    ☽ {cj['moon']}    Asc {cj['ascSign']}"
     return (
-        "<div class=natalwrap><canvas id=natal></canvas>"
+        "<div class=natalwrap><div class=natalcap>Натальная карта — положение светил</div>"
+        "<canvas id=natal></canvas>"
         f"<div class=natalfoot>{html.escape(foot)}</div></div>"
         f"<script>window.CHART={_json.dumps(cj, ensure_ascii=False)};</script>"
         f"<script>{_NATAL_JS}</script>"
@@ -279,10 +280,12 @@ button:hover{background:#fff;}
 .sec p{margin:9px 0;}
 .chart{display:block;max-width:100%;border:1px solid var(--line);border-radius:0;margin:16px 0;
  filter:invert(1);}
-.natalwrap{max-width:540px;margin:20px auto 8px;}
+.natalwrap{max-width:640px;margin:22px auto 8px;}
 #natal{width:100%;display:block;}
-.natalfoot{text-align:center;font-family:'Space Mono',ui-monospace,monospace;color:var(--muted);
- font-size:13px;margin-top:8px;letter-spacing:.06em;}
+.natalcap{text-align:center;font-family:'Space Mono',ui-monospace,monospace;color:var(--muted);
+ font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:6px;}
+.natalfoot{text-align:center;font-family:'Space Mono',ui-monospace,monospace;color:var(--ink);
+ font-size:15px;margin-top:10px;letter-spacing:.04em;}
 .planets{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:14px 0 8px;}
 .pl{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
 .glyph{font-size:24px;line-height:1.2;width:30px;text-align:center;color:var(--accent);flex:none;}
