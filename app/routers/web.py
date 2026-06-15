@@ -115,7 +115,7 @@ def _chart_json(data: dict) -> dict | None:
 _NATAL_JS = r"""
 (function(){
   var cv=document.getElementById('natal'); if(!cv||!cv.getContext||!window.CHART) return;
-  var ctx=cv.getContext('2d'), C=window.CHART, W,H,DPR,cx,cy,R,t0=null;
+  var ctx=cv.getContext('2d'), C=window.CHART, W,H,DPR,cx,cy,R,U,t0=null;
   var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   var SG=['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
   var PG={sun:'☉',moon:'☽',mercury:'☿',venus:'♀',mars:'♂',jupiter:'♃',saturn:'♄',uranus:'♅',neptune:'♆',pluto:'♇'};
@@ -152,7 +152,7 @@ _NATAL_JS = r"""
     var arr=items.map(function(p,i){return {i:i,lon:p.lon};}).sort(function(a,b){return a.lon-b.lon;});
     for(var pass=0;pass<70;pass++){var moved=false;
       for(var k=0;k<arr.length;k++){var j=(k+1)%arr.length;var gap=((arr[j].lon-arr[k].lon)%360+360)%360;
-        if(arr.length>1&&gap<12){var s=(12-gap)/2;arr[k].lon-=s;arr[j].lon+=s;moved=true;}}
+        if(arr.length>1&&gap<16){var s=(16-gap)/2;arr[k].lon-=s;arr[j].lon+=s;moved=true;}}
       if(!moved)break;}
     var o=[];arr.forEach(function(x){o[x.i]=x.lon;});return o;
   }
@@ -172,20 +172,24 @@ _NATAL_JS = r"""
   }
   function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);
-    W=cv.clientWidth;H=W;cv.style.height=W+'px';cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
-    cx=W/2;cy=H/2;R=W*0.355;
+    W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx=W/2;cy=H/2;U=Math.min(W,H);R=U*0.40;
     GL=[];PA=[];STAR=[];PPOS=[];
     var rPl=R*0.58;
     var disp=spread(C.positions);
-    for(var i=0;i<C.positions.length;i++){var pp=C.positions[i],dl=disp[i],pos=xy(dl,rPl);
-      PPOS[i]=pos; addGlyph(PG[pp.k]||'☉',pos[0],pos[1],W*0.074,PLANETC,700+i*80,640);}
+    var ord=disp.map(function(l,i){return {i:i,l:l};}).sort(function(a,b){return a.l-b.l;});
+    var rArr=[],lvl=0;
+    for(var k=0;k<ord.length;k++){if(k>0){var gp=((ord[k].l-ord[k-1].l)%360+360)%360;lvl=(gp<20)?(lvl+1)%3:0;}rArr[ord[k].i]=rPl-lvl*rPl*0.16;}
+    var psz=U*0.046;
+    for(var i=0;i<C.positions.length;i++){var pp=C.positions[i],dl=disp[i],pos=xy(dl,rArr[i]);
+      PPOS[i]=pos; addGlyph(PG[pp.k]||'☉',pos[0],pos[1],psz,PLANETC,700+i*80,640);}
     ascP=(C.asc!=null)?{i0:xy(C.asc,R*0.82),i1:xy(C.asc,R),la:xy(C.asc,R*1.27)}:null;
-    var n=Math.round(W*W/2400);
+    var n=Math.round(W*H/2200);
     for(var i=0;i<n;i++)STAR.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*0.85+0.12,
       vx:(Math.random()-.5)*0.05,vy:(Math.random()-.5)*0.05,a:Math.random()*0.2+0.03,ph:Math.random()*6.28});
     BG=[];var nb=Math.max(5,Math.round(W/115));
     for(var b=0;b<nb;b++){var pat=BGCON[(Math.random()*BGCON.length)|0];
-      var bx=Math.random()*W,by=Math.random()*H,sc=W*(0.05+Math.random()*0.06),rot=Math.random()*6.2832,co=Math.cos(rot),si=Math.sin(rot);
+      var bx=Math.random()*W,by=Math.random()*H,sc=U*(0.055+Math.random()*0.07),rot=Math.random()*6.2832,co=Math.cos(rot),si=Math.sin(rot);
       var pts=pat.p.map(function(q){var rx=q[0]*co-q[1]*si,ry=q[0]*si+q[1]*co;return [bx+rx*sc,by-ry*sc];});
       BG.push({pts:pts,l:pat.l,ph:Math.random()*6.28,a:0.09+Math.random()*0.10});}
   }
@@ -224,7 +228,7 @@ _NATAL_JS = r"""
   }
   function drawSignLabels(al){
     ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=al;ctx.fillStyle=SIGNC;
-    ctx.font=(W*0.030)+'px '+SYMFONT;
+    ctx.font=(U*0.028)+'px '+SYMFONT;
     for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.18);ctx.fillText(SG[i]+'︎',g[0],g[1]);}
     ctx.globalAlpha=1;
   }
@@ -232,16 +236,8 @@ _NATAL_JS = r"""
     if(!C.aspects)return;ctx.save();ctx.lineCap='round';
     for(var i=0;i<C.aspects.length;i++){var as=C.aspects[i];var A=PPOS[as.a],B=PPOS[as.b];if(!A||!B)continue;
       var moon=(as.a===C.moonIdx||as.b===C.moonIdx);
-      ctx.strokeStyle='rgba('+GLOW+','+(al*0.08)+')';ctx.lineWidth=moon?1:0.7;
-      ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();
-      if(reduce||!(moon||as.s>=0.5))continue;
-      var dur=2300+(as.a%3)*300,fr=((t+i*500)%dur)/dur;
-      var px=A[0]+(B[0]-A[0])*fr,py=A[1]+(B[1]-A[1])*fr;
-      ctx.globalAlpha=Math.min(1,al*(0.55+as.s*0.45)*(moon?1.3:1));ctx.fillStyle='#ffe7a8';
-      ctx.shadowColor='rgba('+GLOW+',0.95)';ctx.shadowBlur=moon?15:9;
-      ctx.beginPath();ctx.arc(px,py,moon?2.7:1.9,0,6.2832);ctx.fill();ctx.shadowBlur=0;
-      var f2=fr-0.05;if(f2>0){ctx.globalAlpha=al*0.32;ctx.beginPath();ctx.arc(A[0]+(B[0]-A[0])*f2,A[1]+(B[1]-A[1])*f2,1.1,0,6.2832);ctx.fill();}
-      ctx.globalAlpha=1;}
+      ctx.strokeStyle='rgba('+GLOW+','+(al*(moon?0.13:0.05))+')';ctx.lineWidth=moon?0.9:0.55;
+      ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();}
     ctx.restore();
   }
   function crisp(t){
@@ -267,7 +263,7 @@ _NATAL_JS = r"""
     ctx.globalAlpha=1;crisp(t);
     if(ascP){var al=reduce?1:ease(cl((t-1100)/600));if(al>0){ctx.globalAlpha=al;
       ctx.strokeStyle='#ffffff';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(ascP.i0[0],ascP.i0[1]);ctx.lineTo(ascP.i1[0],ascP.i1[1]);ctx.stroke();
-      ctx.fillStyle='#fff';ctx.font='bold '+(W*0.024)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Asc',ascP.la[0],ascP.la[1]);ctx.globalAlpha=1;}}
+      ctx.fillStyle='#fff';ctx.font='bold '+(U*0.024)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Asc',ascP.la[0],ascP.la[1]);ctx.globalAlpha=1;}}
     if(reduce)return;requestAnimationFrame(frame);
   }
   function go(){build();t0=null;requestAnimationFrame(frame);}
@@ -412,9 +408,10 @@ button:hover{background:#fff;}
 .sec p{margin:9px 0;}
 .chart{display:block;max-width:100%;border:1px solid var(--line);border-radius:0;margin:16px 0;
  filter:invert(1);}
-.natalwrap{max-width:640px;margin:22px auto 8px;}
-#natal{width:100%;display:block;}
-.natalcap{text-align:center;font-family:'Space Mono',ui-monospace,monospace;color:var(--muted);
+.natalwrap{position:relative;width:100vw;left:50%;transform:translateX(-50%);margin:8px 0 6px;}
+#natal{width:100%;height:88vh;min-height:540px;display:block;}
+.natalcap{position:absolute;top:18px;left:0;right:0;z-index:2;text-align:center;
+ font-family:'Space Mono',ui-monospace,monospace;color:var(--muted);
  font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:6px;}
 .natalfoot{text-align:center;font-family:'Space Mono',ui-monospace,monospace;color:var(--ink);
  font-size:15px;margin-top:10px;letter-spacing:.04em;}
