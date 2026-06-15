@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import html
+import json as _json
 import re
 import uuid
 from datetime import date
@@ -60,6 +61,113 @@ _HOUSE_RU = {1: "1-й", 2: "2-й", 3: "3-й", 4: "4-й", 5: "5-й", 6: "6-й",
 def _modules_of(data: dict) -> dict:
     m = data.get("calculation_modules") or {}
     return m.get("person_a", m)
+
+
+_SIGNS_RU = ["Овен", "Телец", "Близнецы", "Рак", "Лев", "Дева",
+             "Весы", "Скорпион", "Стрелец", "Козерог", "Водолей", "Рыбы"]
+
+
+def _chart_json(data: dict) -> dict | None:
+    """Данные натальной карты для живого JS-рендера (реальные долготы)."""
+    w = (_modules_of(data).get("western_astrology") or {})
+    if w.get("calculation_status") != "calculated":
+        return None
+
+    def lon(sign: str, deg) -> float | None:
+        try:
+            return _SIGNS_RU.index(sign) * 30.0 + float(deg)
+        except (ValueError, TypeError):
+            return None
+
+    pos = []
+    for p in w.get("positions") or []:
+        lo = lon(p["sign"], p["degree"])
+        if lo is not None:
+            pos.append({"k": p["key"], "lon": round(lo, 2),
+                        "deg": int(float(p["degree"])), "retro": bool(p.get("retrograde"))})
+    asc = w.get("ascendant") or {}
+    return {
+        "positions": pos,
+        "asc": lon(asc.get("sign"), asc.get("degree")) if asc.get("sign") else None,
+        "sun": (w.get("sun") or {}).get("sign", ""),
+        "moon": (w.get("moon") or {}).get("sign", ""),
+        "ascSign": asc.get("sign", ""),
+    }
+
+
+# Живая натальная карта: колесо рисуется, глифы-планеты влетают на реальные позиции (Canvas).
+_NATAL_JS = r"""
+(function(){
+  var cv=document.getElementById('natal'); if(!cv||!cv.getContext||!window.CHART) return;
+  var ctx=cv.getContext('2d'), C=window.CHART, W,H,DPR,cx,cy,R,disp,t0=null;
+  var SG=['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
+  var PG={sun:'☉',moon:'☽',mercury:'☿',venus:'♀',mars:'♂',jupiter:'♃',saturn:'♄',uranus:'♅',neptune:'♆',pluto:'♇'};
+  var INK='#ece7d8',HAIR='rgba(255,255,255,.16)',MUT='rgba(255,255,255,.42)';
+  var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function xy(lon,r){var a=lon*Math.PI/180;return [cx+r*Math.sin(a), cy-r*Math.cos(a)];}
+  function spread(items){
+    var arr=items.map(function(p,i){return {i:i,lon:p.lon};}).sort(function(a,b){return a.lon-b.lon;});
+    for(var pass=0;pass<60;pass++){var moved=false;
+      for(var k=0;k<arr.length;k++){var j=(k+1)%arr.length;var gap=((arr[j].lon-arr[k].lon)%360+360)%360;
+        if(arr.length>1&&gap<7){var s=(7-gap)/2;arr[k].lon-=s;arr[j].lon+=s;moved=true;}}
+      if(!moved)break;}
+    var out=[];arr.forEach(function(o){out[o.i]=o.lon;});return out;
+  }
+  function resize(){
+    DPR=Math.min(window.devicePixelRatio||1,2);
+    W=cv.clientWidth;H=W;cv.style.height=W+'px';cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx=W/2;cy=H/2;R=W*0.40;disp=spread(C.positions);
+  }
+  function ease(x){return 1-Math.pow(1-x,3);}
+  function draw(ts){
+    if(t0==null)t0=ts;var T=ts-t0;
+    ctx.clearRect(0,0,W,H);
+    var rIn=R*0.80,rPl=R*0.64;
+    var ringP=reduce?1:ease(Math.min(1,T/650));
+    ctx.strokeStyle=HAIR;ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+ringP*6.2832);ctx.stroke();
+    ctx.lineWidth=0.8;ctx.beginPath();ctx.arc(cx,cy,rIn,0,6.2832);ctx.stroke();
+    for(var d=0;d<360;d+=5){var q0=xy(d,R),q1=xy(d,R-(d%30===0?R*0.05:R*0.024));
+      ctx.beginPath();ctx.moveTo(q0[0],q0[1]);ctx.lineTo(q1[0],q1[1]);ctx.stroke();}
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    for(var i=0;i<12;i++){var a0=xy(i*30,rIn),a1=xy(i*30,R);
+      ctx.strokeStyle=HAIR;ctx.beginPath();ctx.moveTo(a0[0],a0[1]);ctx.lineTo(a1[0],a1[1]);ctx.stroke();
+      var g=xy(i*30+15,R*1.085);ctx.fillStyle=MUT;ctx.font=(W*0.030)+'px serif';ctx.fillText(SG[i],g[0],g[1]);}
+    for(var i=0;i<C.positions.length;i++){var p=C.positions[i];var dl=disp[i];
+      var st=reduce?0:300+i*70;var pr=reduce?1:ease(Math.min(1,Math.max(0,(T-st)/720)));
+      if(pr<=0)continue;
+      var tg=xy(dl,rPl),s0=xy(dl,R*1.28);
+      var x=s0[0]+(tg[0]-s0[0])*pr,y=s0[1]+(tg[1]-s0[1])*pr;
+      if(pr>0.55){var ta=xy(p.lon,rIn),tb=xy(p.lon,rIn-R*0.03);ctx.strokeStyle=INK;ctx.lineWidth=0.9;
+        ctx.beginPath();ctx.moveTo(ta[0],ta[1]);ctx.lineTo(tb[0],tb[1]);ctx.stroke();}
+      ctx.globalAlpha=pr;ctx.fillStyle=INK;ctx.font=(W*0.036)+'px serif';ctx.fillText(PG[p.k]||'·',x,y);
+      var dg=xy(dl,rPl-R*0.125);ctx.fillStyle=MUT;ctx.font=(W*0.017)+'px monospace';
+      ctx.fillText(p.deg+'°'+(p.retro?' R':''),dg[0],dg[1]);ctx.globalAlpha=1;}
+    if(C.asc!=null){var ap=reduce?1:ease(Math.min(1,Math.max(0,(T-900)/600)));
+      if(ap>0){var i0=xy(C.asc,rIn),i1=xy(C.asc,R);ctx.strokeStyle=INK;ctx.lineWidth=1.6*ap;
+        ctx.beginPath();ctx.moveTo(i0[0],i0[1]);ctx.lineTo(i1[0],i1[1]);ctx.stroke();
+        var la=xy(C.asc,R*1.085);ctx.fillStyle=INK;ctx.font='bold '+(W*0.021)+'px sans-serif';ctx.fillText('Asc',la[0],la[1]);}}
+    if(!reduce&&T<2400)requestAnimationFrame(draw);
+  }
+  function go(){resize();t0=null;requestAnimationFrame(draw);}
+  window.addEventListener('resize',function(){go();});
+  go();
+})();
+"""
+
+
+def _natal_block(data: dict, pid: str) -> str:
+    """Живая Canvas-карта (если есть астрология), иначе — статичный PNG-фолбэк."""
+    cj = _chart_json(data)
+    if not cj or not cj["positions"]:
+        return f"<img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>"
+    foot = f"☉ {cj['sun']}    ☽ {cj['moon']}    Asc {cj['ascSign']}"
+    return (
+        "<div class=natalwrap><canvas id=natal></canvas>"
+        f"<div class=natalfoot>{html.escape(foot)}</div></div>"
+        f"<script>window.CHART={_json.dumps(cj, ensure_ascii=False)};</script>"
+        f"<script>{_NATAL_JS}</script>"
+    )
 
 
 def _positions_html(data: dict) -> str:
@@ -171,6 +279,10 @@ button:hover{background:#fff;}
 .sec p{margin:9px 0;}
 .chart{display:block;max-width:100%;border:1px solid var(--line);border-radius:0;margin:16px 0;
  filter:invert(1);}
+.natalwrap{max-width:540px;margin:20px auto 8px;}
+#natal{width:100%;display:block;}
+.natalfoot{text-align:center;font-family:'Space Mono',ui-monospace,monospace;color:var(--muted);
+ font-size:13px;margin-top:8px;letter-spacing:.06em;}
 .planets{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:14px 0 8px;}
 .pl{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
 .glyph{font-size:24px;line-height:1.2;width:30px;text-align:center;color:var(--accent);flex:none;}
@@ -911,7 +1023,7 @@ def result(pid: str) -> str:
     <div class=wrap>
       <div class=cred>{html.escape(CREDIBILITY)}</div>
       {f'<p class=summary>{summary}</p>' if summary else ''}
-      <img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>
+      {_natal_block(data, pid)}
       {positions}
       <div class=actions>
         <a class=btnlink href='/profile/{pid}'>Дашборд профиля</a>
