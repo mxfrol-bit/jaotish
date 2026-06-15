@@ -165,16 +165,16 @@ _NATAL_JS = r"""
   function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);
     W=cv.clientWidth;H=W;cv.style.height=W+'px';cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
-    cx=W/2;cy=H/2;R=W*0.40;
+    cx=W/2;cy=H/2;R=W*0.355;
     GL=[];PA=[];STAR=[];PPOS=[];
     var rPl=R*0.58;
     var disp=spread(C.positions);
     for(var i=0;i<C.positions.length;i++){var pp=C.positions[i],dl=disp[i],pos=xy(dl,rPl);
       PPOS[i]=pos; addGlyph(PG[pp.k]||'☉',pos[0],pos[1],W*0.074,PLANETC,700+i*80,640);}
-    ascP=(C.asc!=null)?{i0:xy(C.asc,R*0.82),i1:xy(C.asc,R),la:xy(C.asc,R*1.26)}:null;
-    var n=Math.round(W*W/5200);
-    for(var i=0;i<n;i++)STAR.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.1+0.2,
-      vx:(Math.random()-.5)*0.07,vy:(Math.random()-.5)*0.07,a:Math.random()*0.4+0.05,ph:Math.random()*6.28});
+    ascP=(C.asc!=null)?{i0:xy(C.asc,R*0.82),i1:xy(C.asc,R),la:xy(C.asc,R*1.27)}:null;
+    var n=Math.round(W*W/2400);
+    for(var i=0;i<n;i++)STAR.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*0.85+0.12,
+      vx:(Math.random()-.5)*0.05,vy:(Math.random()-.5)*0.05,a:Math.random()*0.2+0.03,ph:Math.random()*6.28});
   }
   function stardust(t){
     for(var i=0;i<STAR.length;i++){var s=STAR[i];if(!reduce){s.x+=s.vx;s.y+=s.vy;
@@ -191,7 +191,7 @@ _NATAL_JS = r"""
     ctx.globalAlpha=1;
   }
   function drawCon(t,al){
-    for(var i=0;i<12;i++){var con=CON[i];if(!con)continue;var c=xy(i*30+15,R*1.085),sc=R*0.115;
+    for(var i=0;i<12;i++){var con=CON[i];if(!con)continue;var c=xy(i*30+15,R*1.075),sc=R*0.105;
       ctx.strokeStyle='rgba(200,205,222,'+(al*0.26)+')';ctx.lineWidth=0.7;
       for(var k=0;k<con.l.length;k++){var A=con.p[con.l[k][0]],B=con.p[con.l[k][1]];
         ctx.beginPath();ctx.moveTo(c[0]+A[0]*sc,c[1]-A[1]*sc);ctx.lineTo(c[0]+B[0]*sc,c[1]-B[1]*sc);ctx.stroke();}
@@ -204,7 +204,7 @@ _NATAL_JS = r"""
   function drawSignLabels(al){
     ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=al;ctx.fillStyle=SIGNC;
     ctx.font=(W*0.030)+'px '+SYMFONT;
-    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.205);ctx.fillText(SG[i]+'︎',g[0],g[1]);}
+    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.18);ctx.fillText(SG[i]+'︎',g[0],g[1]);}
     ctx.globalAlpha=1;
   }
   function drawAspects(al,t){
@@ -213,8 +213,8 @@ _NATAL_JS = r"""
       var moon=(as.a===C.moonIdx||as.b===C.moonIdx);
       ctx.strokeStyle='rgba('+GLOW+','+(al*0.08)+')';ctx.lineWidth=moon?1:0.7;
       ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();
-      if(reduce)continue;
-      var dur=1500+(as.a%4)*180,fr=((t+i*330)%dur)/dur;
+      if(reduce||!(moon||as.s>=0.5))continue;
+      var dur=2300+(as.a%3)*300,fr=((t+i*500)%dur)/dur;
       var px=A[0]+(B[0]-A[0])*fr,py=A[1]+(B[1]-A[1])*fr;
       ctx.globalAlpha=Math.min(1,al*(0.55+as.s*0.45)*(moon?1.3:1));ctx.fillStyle='#ffe7a8';
       ctx.shadowColor='rgba('+GLOW+',0.95)';ctx.shadowBlur=moon?15:9;
