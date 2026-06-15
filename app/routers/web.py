@@ -87,8 +87,23 @@ def _chart_json(data: dict) -> dict | None:
                         "deg": int(float(p["degree"])), "retro": bool(p.get("retrograde")),
                         "name": p.get("name", ""), "sign": p["sign"]})
     asc = w.get("ascendant") or {}
+    # аспекты между планетами (облака-связи): соединение/секстиль/квадрат/тригон/оппозиция
+    aspd = [(0, 7), (60, 5), (90, 6), (120, 6), (180, 7)]
+    aspects = []
+    for i in range(len(pos)):
+        for j in range(i + 1, len(pos)):
+            d = abs(pos[i]["lon"] - pos[j]["lon"]) % 360
+            if d > 180:
+                d = 360 - d
+            for ang, orb in aspd:
+                off = abs(d - ang)
+                if off <= orb:
+                    aspects.append({"a": i, "b": j, "s": round(1 - off / orb, 2)})
+                    break
     return {
         "positions": pos,
+        "aspects": aspects,
+        "moonIdx": next((i for i, p in enumerate(pos) if p["k"] == "moon"), -1),
         "asc": lon(asc.get("sign"), asc.get("degree")) if asc.get("sign") else None,
         "sun": (w.get("sun") or {}).get("sign", ""),
         "moon": (w.get("moon") or {}).get("sign", ""),
@@ -100,15 +115,16 @@ def _chart_json(data: dict) -> dict | None:
 _NATAL_JS = r"""
 (function(){
   var cv=document.getElementById('natal'); if(!cv||!cv.getContext||!window.CHART) return;
-  var ctx=cv.getContext('2d'), C=window.CHART, W,H,DPR,cx,cy,R, P=[], labels=[], T=[], t0=null;
+  var ctx=cv.getContext('2d'), C=window.CHART, W,H,DPR,cx,cy,R,t0=null;
   var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   var SG=['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
   var PG={sun:'☉',moon:'☽',mercury:'☿',venus:'♀',mars:'♂',jupiter:'♃',saturn:'♄',uranus:'♅',neptune:'♆',pluto:'♇'};
-  var EL=['fire','earth','air','water','fire','earth','air','water','fire','earth','air','water'];
-  var SIGNC='#d6d8e0', PLANETC='#e8c168', RINGC='rgba(190,194,210,.55)', FAINTC='rgba(150,154,170,.32)';
+  var SIGNC='#d6d8e0', PLANETC='#e8c168', GLOW='232,193,104';
   var SYMFONT="'Apple Symbols','Segoe UI Symbol','Noto Sans Symbols2','DejaVu Sans',serif";
   var off=document.createElement('canvas'), octx=off.getContext('2d');
   function xy(lon,r){var a=lon*Math.PI/180;return [cx+r*Math.sin(a), cy-r*Math.cos(a)];}
+  function ease(x){return x<0?0:x>1?1:1-Math.pow(1-x,3);}
+  function cl(x){return x<0?0:x>1?1:x;}
   function spread(items){
     var arr=items.map(function(p,i){return {i:i,lon:p.lon};}).sort(function(a,b){return a.lon-b.lon;});
     for(var pass=0;pass<70;pass++){var moved=false;
@@ -117,58 +133,90 @@ _NATAL_JS = r"""
       if(!moved)break;}
     var o=[];arr.forEach(function(x){o[x.i]=x.lon;});return o;
   }
-  function glyph(g,px,py,size,col){
-    var s=Math.round(size),pad=Math.round(size*0.32),d=s+pad*2;
+  var GL=[], PA=[], STAR=[], PPOS=[], ascP=null;
+  function addGlyph(g,gx,gy,size,color,start,dur){
+    var gi=GL.length; GL.push({g:g,gx:gx,gy:gy,size:size,c:color,start:start,dur:dur});
+    var s=Math.round(size),pad=Math.round(size*0.3),d=s+pad*2;
     off.width=d;off.height=d;octx.clearRect(0,0,d,d);
-    octx.fillStyle='#fff';octx.textAlign='center';octx.textBaseline='middle';
-    octx.font=s+'px '+SYMFONT;
+    octx.fillStyle='#fff';octx.textAlign='center';octx.textBaseline='middle';octx.font=s+'px '+SYMFONT;
     octx.fillText(g+'︎',d/2,d/2);
-    var im=octx.getImageData(0,0,d,d).data,step=Math.max(2,Math.round(size/24));
+    var im=octx.getImageData(0,0,d,d).data,step=Math.max(2,Math.round(size/22));
     for(var y=0;y<d;y+=step)for(var x=0;x<d;x+=step){
-      if(im[(y*d+x)*4+3]>120)T.push({x:px+(x-d/2),y:py+(y-d/2),c:col,big:1});
+      if(im[(y*d+x)*4+3]>120){var a=Math.random()*6.2832,rad=W*(0.28+Math.random()*0.5);
+        PA.push({sx:cx+Math.cos(a)*rad,sy:cy+Math.sin(a)*rad,tx:gx+(x-d/2),ty:gy+(y-d/2),gi:gi,c:color,
+          dx:(Math.random()-.5)*46,dy:(Math.random()-.5)*46});}
     }
   }
-  function line(x0,y0,x1,y1,col,gap){var dx=x1-x0,dy=y1-y0,len=Math.hypot(dx,dy),n=Math.max(1,Math.round(len/gap));
-    for(var i=0;i<=n;i++)T.push({x:x0+dx*i/n,y:y0+dy*i/n,c:col});}
-  function arc(r,col,gap){var n=Math.round(2*Math.PI*r/gap);
-    for(var i=0;i<=n;i++){var p=xy(i/n*360,r);T.push({x:p[0],y:p[1],c:col});}}
   function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);
     W=cv.clientWidth;H=W;cv.style.height=W+'px';cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
     cx=W/2;cy=H/2;R=W*0.355;
-    T=[];labels=[];
-    var rIn=R*0.82,rPl=R*0.55,ringc=RINGC,faint=FAINTC;
-    arc(R,ringc,3.2);arc(rIn,faint,4.6);
-    for(var i=0;i<12;i++){var a0=xy(i*30,rIn),a1=xy(i*30,R);line(a0[0],a0[1],a1[0],a1[1],faint,5);}
-    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.14);glyph(SG[i],g[0],g[1],W*0.052,SIGNC);}
+    GL=[];PA=[];STAR=[];PPOS=[];
+    var rIn=R*0.82,rPl=R*0.55;
+    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.14);addGlyph(SG[i],g[0],g[1],W*0.050,SIGNC,200+i*45,560);}
     var disp=spread(C.positions);
-    for(var i=0;i<C.positions.length;i++){var p=C.positions[i],dl=disp[i],pos=xy(dl,rPl);
-      glyph(PG[p.k]||'☉',pos[0],pos[1],W*0.062,PLANETC);
-      var k0=xy(p.lon,rIn),k1=xy(p.lon,rIn-R*0.05);line(k0[0],k0[1],k1[0],k1[1],PLANETC,3.6);
-    }
-    if(C.asc!=null){var i0=xy(C.asc,rIn),i1=xy(C.asc,R);line(i0[0],i0[1],i1[0],i1[1],'#ffffff',3.2);
-      var la=xy(C.asc,R*1.13);labels.push({t:'Asc',x:la[0],y:la[1],f:'bold '+(W*0.026)+'px sans-serif',c:'#fff'});}
-    P=T.map(function(t){return {x:cx+(Math.random()-.5)*W*1.1,y:cy+(Math.random()-.5)*W*1.1,vx:0,vy:0,tx:t.x,ty:t.y,c:t.c,big:t.big,ph:Math.random()*6.28,d:reduce?0:Math.random()*520};});
+    for(var i=0;i<C.positions.length;i++){var pp=C.positions[i],dl=disp[i],pos=xy(dl,rPl);
+      PPOS[i]=pos; addGlyph(PG[pp.k]||'☉',pos[0],pos[1],W*0.062,PLANETC,800+i*85,640);}
+    ascP=(C.asc!=null)?{i0:xy(C.asc,rIn),i1:xy(C.asc,R),la:xy(C.asc,R*1.13)}:null;
+    var n=Math.round(W*W/5200);
+    for(var i=0;i<n;i++)STAR.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.1+0.2,
+      vx:(Math.random()-.5)*0.07,vy:(Math.random()-.5)*0.07,a:Math.random()*0.4+0.05,ph:Math.random()*6.28});
+    PPOS._rIn=rIn;
   }
-  function paint(off2){
-    for(var i=0;i<P.length;i++){var p=P[i];ctx.fillStyle=p.c;var s=p.big?1.6:1.1;ctx.fillRect(p.x+off2,p.y+off2,s,s);}
+  function drawWheel(al){
+    ctx.globalAlpha=al;ctx.strokeStyle='rgba(190,194,210,.5)';ctx.lineWidth=1.1;
+    ctx.beginPath();ctx.arc(cx,cy,R,0,6.2832);ctx.stroke();
+    ctx.strokeStyle='rgba(150,154,170,.28)';ctx.lineWidth=0.8;ctx.beginPath();ctx.arc(cx,cy,R*0.82,0,6.2832);ctx.stroke();
+    for(var i=0;i<12;i++){var a0=xy(i*30,R*0.82),a1=xy(i*30,R);ctx.beginPath();ctx.moveTo(a0[0],a0[1]);ctx.lineTo(a1[0],a1[1]);ctx.stroke();}
+    ctx.globalAlpha=1;
   }
-  function drawLabels(al){ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=al;
-    for(var i=0;i<labels.length;i++){var L=labels[i];ctx.font=L.f;ctx.fillStyle=L.c;ctx.fillText(L.t,L.x,L.y);}ctx.globalAlpha=1;}
+  function drawAspects(al){
+    if(!C.aspects)return;ctx.save();ctx.lineCap='round';
+    for(var i=0;i<C.aspects.length;i++){var as=C.aspects[i];var A=PPOS[as.a],B=PPOS[as.b];if(!A||!B)continue;
+      var moon=(as.a===C.moonIdx||as.b===C.moonIdx);
+      var aa=al*(0.12+as.s*0.30)*(moon?1.7:1);
+      ctx.strokeStyle='rgba('+GLOW+','+aa+')';ctx.lineWidth=moon?1.4:0.9;
+      ctx.shadowColor='rgba('+GLOW+',0.7)';ctx.shadowBlur=moon?10:6;
+      ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();}
+    ctx.restore();
+  }
+  function crisp(t){
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    for(var i=0;i<GL.length;i++){var G=GL[i];var settle=reduce?1:cl((t-(G.start+G.dur))/520);
+      if(settle<=0)continue;ctx.globalAlpha=settle;ctx.font=G.size+'px '+SYMFONT;ctx.fillStyle=G.c;
+      ctx.shadowColor='rgba('+GLOW+','+(G.c===PLANETC?0.55:0)+')';ctx.shadowBlur=G.c===PLANETC?8:0;
+      ctx.fillText(G.g+'︎',G.gx,G.gy);ctx.shadowBlur=0;}
+    ctx.globalAlpha=1;
+  }
+  function stardust(t){
+    for(var i=0;i<STAR.length;i++){var s=STAR[i];if(!reduce){s.x+=s.vx;s.y+=s.vy;
+      if(s.x<0)s.x+=W;if(s.x>W)s.x-=W;if(s.y<0)s.y+=H;if(s.y>H)s.y-=H;}
+      var tw=reduce?1:(0.6+0.4*Math.sin(t*0.001+s.ph));
+      ctx.globalAlpha=s.a*tw;ctx.fillStyle='#cdd2e0';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.2832);ctx.fill();}
+    ctx.globalAlpha=1;
+  }
   function frame(ts){
-    if(t0==null)t0=ts;var el=ts-t0;ctx.clearRect(0,0,W,H);
-    for(var i=0;i<P.length;i++){var p=P[i];
-      if(reduce){p.x=p.tx;p.y=p.ty;}
-      else if(el>p.d){var ax=(p.tx-p.x)*0.02,ay=(p.ty-p.y)*0.02;p.vx=(p.vx+ax)*0.86;p.vy=(p.vy+ay)*0.86;p.x+=p.vx;p.y+=p.vy;}
-      ctx.fillStyle=p.c;var s=p.big?1.6:1.1;ctx.fillRect(p.x,p.y,s,s);}
-    var asm=reduce?1:Math.min(1,Math.max(0,(el-1400)/520));
-    if(asm>0)drawLabels(asm);
+    if(t0==null)t0=ts;var t=ts-t0;ctx.clearRect(0,0,W,H);
+    stardust(t);
+    drawWheel(reduce?1:ease(cl(t/700)));
+    drawAspects(reduce?1:ease(cl((t-1900)/900)));
+    // assembling particles
+    for(var i=0;i<PA.length;i++){var p=PA[i];var G=GL[p.gi];
+      var settle=reduce?1:cl((t-(G.start+G.dur))/520);
+      if(settle>=1)continue;
+      var ap=reduce?1:ease(cl((t-G.start)/G.dur));
+      var x,y,al;
+      if(settle<=0){x=p.sx+(p.tx-p.sx)*ap;y=p.sy+(p.ty-p.sy)*ap;al=ap*0.9;}
+      else{x=p.tx+p.dx*settle;y=p.ty+p.dy*settle;al=(1-settle)*0.8;}
+      ctx.globalAlpha=al;ctx.fillStyle=p.c;ctx.fillRect(x,y,1.4,1.4);}
+    ctx.globalAlpha=1;
+    crisp(t);
+    if(ascP){var al=reduce?1:ease(cl((t-1100)/600));if(al>0){ctx.globalAlpha=al;
+      ctx.strokeStyle='#ffffff';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(ascP.i0[0],ascP.i0[1]);ctx.lineTo(ascP.i1[0],ascP.i1[1]);ctx.stroke();
+      ctx.fillStyle='#fff';ctx.font='bold '+(W*0.026)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Asc',ascP.la[0],ascP.la[1]);ctx.globalAlpha=1;}}
     if(reduce)return;
-    if(el<3200)requestAnimationFrame(frame);else requestAnimationFrame(shimmer);
+    requestAnimationFrame(frame);
   }
-  function shimmer(ts){ctx.clearRect(0,0,W,H);
-    for(var i=0;i<P.length;i++){var p=P[i],o=Math.sin(ts*0.0011+p.ph)*0.7;ctx.fillStyle=p.c;var s=p.big?1.6:1.1;ctx.fillRect(p.tx+o,p.ty+o,s,s);}
-    drawLabels(1);requestAnimationFrame(shimmer);}
   function go(){build();t0=null;requestAnimationFrame(frame);}
   window.addEventListener('resize',go);go();
 })();
