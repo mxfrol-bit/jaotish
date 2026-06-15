@@ -19,12 +19,13 @@
   --line:rgba(255,255,255,.15);
   --line-2:rgba(255,255,255,.09);
   --soft:rgba(255,255,255,.05);
-  --violet:#999999;
-  --violet-deep:#6f6f6f;
-  --blue:#8a8a8a;
-  --gold:#c6c6c6;
-  --grad:linear-gradient(128deg,#8a8a8a 0%,#8c8c8c 54%,#b4b4b4 100%);
-  --grad-gold:linear-gradient(120deg,#c6c6c6 0%,#b4b4b4 120%);
+  /* единственный акцент — точечно (1–2 элемента на блок): eyebrow, подсветка, ключевое слово, прогресс, нав */
+  --violet:#a78bfa;
+  --violet-deep:#7c5cff;
+  --blue:#5b8cff;
+  --gold:#e6c47a;
+  --grad:linear-gradient(128deg,#5b8cff 0%,#9d7bff 54%,#caa6ff 100%);
+  --grad-gold:linear-gradient(120deg,#e6c47a 0%,#caa6ff 120%);
   --glass:rgba(255,255,255,.05);
   --glass-2:rgba(255,255,255,.08);
   --r:18px; --r-lg:26px; --r-sm:12px;
@@ -50,9 +51,9 @@ body{
 /* ============ AMBIENT BACKGROUND ============ */
 .bg-fx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .glow{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;will-change:transform}
-.glow.g1{width:640px;height:640px;top:-180px;left:-120px;background:radial-gradient(circle,#8a8a8a66,transparent 70%);animation:drift1 26s var(--ease) infinite alternate}
-.glow.g2{width:720px;height:720px;top:30%;right:-220px;background:radial-gradient(circle,#8c8c8c55,transparent 70%);animation:drift2 32s var(--ease) infinite alternate}
-.glow.g3{width:520px;height:520px;bottom:-160px;left:30%;background:radial-gradient(circle,#c6c6c62e,transparent 70%);animation:drift3 30s var(--ease) infinite alternate}
+.glow.g1{width:640px;height:640px;top:-180px;left:-120px;background:radial-gradient(circle,#5b8cff4d,transparent 70%);animation:drift1 26s var(--ease) infinite alternate}
+.glow.g2{width:720px;height:720px;top:30%;right:-220px;background:radial-gradient(circle,#9d7bff40,transparent 70%);animation:drift2 32s var(--ease) infinite alternate}
+.glow.g3{width:520px;height:520px;bottom:-160px;left:30%;background:radial-gradient(circle,#e6c47a24,transparent 70%);animation:drift3 30s var(--ease) infinite alternate}
 @keyframes drift1{to{transform:translate(80px,60px)}}
 @keyframes drift2{to{transform:translate(-70px,40px)}}
 @keyframes drift3{to{transform:translate(50px,-50px)}}
