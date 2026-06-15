@@ -84,7 +84,8 @@ def _chart_json(data: dict) -> dict | None:
         lo = lon(p["sign"], p["degree"])
         if lo is not None:
             pos.append({"k": p["key"], "lon": round(lo, 2),
-                        "deg": int(float(p["degree"])), "retro": bool(p.get("retrograde"))})
+                        "deg": int(float(p["degree"])), "retro": bool(p.get("retrograde")),
+                        "name": p.get("name", ""), "sign": p["sign"]})
     asc = w.get("ascendant") or {}
     return {
         "positions": pos,
@@ -104,7 +105,7 @@ _NATAL_JS = r"""
   var SG=['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
   var PG={sun:'☉',moon:'☽',mercury:'☿',venus:'♀',mars:'♂',jupiter:'♃',saturn:'♄',uranus:'♅',neptune:'♆',pluto:'♇'};
   var EL=['fire','earth','air','water','fire','earth','air','water','fire','earth','air','water'];
-  var ECOL={fire:'#ff7a45',earth:'#e6bd5e',air:'#6aa0ff',water:'#36d3c2'};
+  var SIGNC='#d6d8e0', PLANETC='#e8c168', RINGC='rgba(190,194,210,.55)', FAINTC='rgba(150,154,170,.32)';
   var SYMFONT="'Apple Symbols','Segoe UI Symbol','Noto Sans Symbols2','DejaVu Sans',serif";
   var off=document.createElement('canvas'), octx=off.getContext('2d');
   function xy(lon,r){var a=lon*Math.PI/180;return [cx+r*Math.sin(a), cy-r*Math.cos(a)];}
@@ -136,16 +137,14 @@ _NATAL_JS = r"""
     W=cv.clientWidth;H=W;cv.style.height=W+'px';cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
     cx=W/2;cy=H/2;R=W*0.355;
     T=[];labels=[];
-    var rIn=R*0.82,rPl=R*0.55,ringc='rgba(180,186,205,.6)',faint='rgba(150,156,178,.34)';
+    var rIn=R*0.82,rPl=R*0.55,ringc=RINGC,faint=FAINTC;
     arc(R,ringc,3.2);arc(rIn,faint,4.6);
     for(var i=0;i<12;i++){var a0=xy(i*30,rIn),a1=xy(i*30,R);line(a0[0],a0[1],a1[0],a1[1],faint,5);}
-    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.14);glyph(SG[i],g[0],g[1],W*0.052,ECOL[EL[i]]);}
+    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.14);glyph(SG[i],g[0],g[1],W*0.052,SIGNC);}
     var disp=spread(C.positions);
     for(var i=0;i<C.positions.length;i++){var p=C.positions[i],dl=disp[i],pos=xy(dl,rPl);
-      var el=EL[Math.floor((((p.lon%360)+360)%360)/30)];
-      glyph(PG[p.k]||'☉',pos[0],pos[1],W*0.060,ECOL[el]);
-      var k0=xy(p.lon,rIn),k1=xy(p.lon,rIn-R*0.045);line(k0[0],k0[1],k1[0],k1[1],'rgba(255,255,255,.75)',4);
-      var dg=xy(dl,rPl-R*0.185);labels.push({t:p.deg+'°'+(p.retro?' R':''),x:dg[0],y:dg[1],f:(W*0.023)+'px monospace',c:'rgba(210,213,224,.92)'});
+      glyph(PG[p.k]||'☉',pos[0],pos[1],W*0.062,PLANETC);
+      var k0=xy(p.lon,rIn),k1=xy(p.lon,rIn-R*0.05);line(k0[0],k0[1],k1[0],k1[1],PLANETC,3.6);
     }
     if(C.asc!=null){var i0=xy(C.asc,rIn),i1=xy(C.asc,R);line(i0[0],i0[1],i1[0],i1[1],'#ffffff',3.2);
       var la=xy(C.asc,R*1.13);labels.push({t:'Asc',x:la[0],y:la[1],f:'bold '+(W*0.026)+'px sans-serif',c:'#fff'});}
@@ -181,11 +180,23 @@ def _natal_block(data: dict, pid: str) -> str:
     cj = _chart_json(data)
     if not cj or not cj["positions"]:
         return f"<img class=chart src='/chart/{pid}.png' alt='карта профиля' loading=lazy>"
-    foot = f"☉ {cj['sun']}    ☽ {cj['moon']}    Asc {cj['ascSign']}"
+    foot = f"☉︎ {cj['sun']}    ☽︎ {cj['moon']}    Asc {cj['ascSign']}"
+    gly = {"sun": "☉", "moon": "☽", "mercury": "☿", "venus": "♀", "mars": "♂",
+           "jupiter": "♃", "saturn": "♄", "uranus": "♅", "neptune": "♆", "pluto": "♇"}
+    legend = "".join(
+        f"<div class=lgrow><span class=lgico>{gly.get(p['k'], '·')}︎</span>"
+        f"<b>{html.escape(p.get('name') or '')}</b>"
+        f"<span class=lgpos>{html.escape(p['sign'])} {p['deg']}°{' ℞' if p['retro'] else ''}</span></div>"
+        for p in cj["positions"]
+    )
     return (
-        "<div class=natalwrap><div class=natalcap>Натальная карта — положение светил</div>"
+        "<div class=natalwrap>"
+        "<div class=natalcap>Снаружи — знаки зодиака · внутри — твои планеты · золотым</div>"
         "<canvas id=natal></canvas>"
-        f"<div class=natalfoot>{html.escape(foot)}</div></div>"
+        f"<div class=natalfoot>{html.escape(foot)}</div>"
+        f"<div class=natalleg>{legend}</div>"
+        "<div class=natalhint>Каждый золотой символ на карте = строка в списке: планета · знак · градус.</div>"
+        "</div>"
         f"<script>window.CHART={_json.dumps(cj, ensure_ascii=False)};</script>"
         f"<script>{_NATAL_JS}</script>"
     )
@@ -306,6 +317,13 @@ button:hover{background:#fff;}
  font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:6px;}
 .natalfoot{text-align:center;font-family:'Space Mono',ui-monospace,monospace;color:var(--ink);
  font-size:15px;margin-top:10px;letter-spacing:.04em;}
+.natalleg{max-width:560px;margin:18px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:0 26px;}
+.lgrow{display:flex;align-items:baseline;gap:11px;padding:8px 2px;border-bottom:1px solid var(--line);}
+.lgico{color:#e8c168;font-size:18px;width:22px;text-align:center;flex:none;}
+.lgrow b{color:var(--ink);font-weight:600;min-width:78px;font-size:14.5px;}
+.lgpos{color:var(--muted);font-family:'Space Mono',ui-monospace,monospace;font-size:13px;margin-left:auto;}
+.natalhint{max-width:560px;margin:14px auto 0;text-align:center;color:var(--muted);font-size:12.5px;}
+@media(max-width:560px){.natalleg{grid-template-columns:1fr;}}
 .planets{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:14px 0 8px;}
 .pl{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
 .glyph{font-size:24px;line-height:1.2;width:30px;text-align:center;color:var(--accent);flex:none;}
