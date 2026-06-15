@@ -165,13 +165,13 @@ _NATAL_JS = r"""
   function build(){
     DPR=Math.min(window.devicePixelRatio||1,2);
     W=cv.clientWidth;H=W;cv.style.height=W+'px';cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
-    cx=W/2;cy=H/2;R=W*0.315;
+    cx=W/2;cy=H/2;R=W*0.40;
     GL=[];PA=[];STAR=[];PPOS=[];
-    var rPl=R*0.55;
+    var rPl=R*0.58;
     var disp=spread(C.positions);
     for(var i=0;i<C.positions.length;i++){var pp=C.positions[i],dl=disp[i],pos=xy(dl,rPl);
-      PPOS[i]=pos; addGlyph(PG[pp.k]||'☉',pos[0],pos[1],W*0.060,PLANETC,700+i*80,640);}
-    ascP=(C.asc!=null)?{i0:xy(C.asc,R*0.82),i1:xy(C.asc,R),la:xy(C.asc,R*1.42)}:null;
+      PPOS[i]=pos; addGlyph(PG[pp.k]||'☉',pos[0],pos[1],W*0.074,PLANETC,700+i*80,640);}
+    ascP=(C.asc!=null)?{i0:xy(C.asc,R*0.82),i1:xy(C.asc,R),la:xy(C.asc,R*1.26)}:null;
     var n=Math.round(W*W/5200);
     for(var i=0;i<n;i++)STAR.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.1+0.2,
       vx:(Math.random()-.5)*0.07,vy:(Math.random()-.5)*0.07,a:Math.random()*0.4+0.05,ph:Math.random()*6.28});
@@ -191,7 +191,7 @@ _NATAL_JS = r"""
     ctx.globalAlpha=1;
   }
   function drawCon(t,al){
-    for(var i=0;i<12;i++){var con=CON[i];if(!con)continue;var c=xy(i*30+15,R*1.17),sc=R*0.155;
+    for(var i=0;i<12;i++){var con=CON[i];if(!con)continue;var c=xy(i*30+15,R*1.085),sc=R*0.115;
       ctx.strokeStyle='rgba(200,205,222,'+(al*0.26)+')';ctx.lineWidth=0.7;
       for(var k=0;k<con.l.length;k++){var A=con.p[con.l[k][0]],B=con.p[con.l[k][1]];
         ctx.beginPath();ctx.moveTo(c[0]+A[0]*sc,c[1]-A[1]*sc);ctx.lineTo(c[0]+B[0]*sc,c[1]-B[1]*sc);ctx.stroke();}
@@ -204,16 +204,23 @@ _NATAL_JS = r"""
   function drawSignLabels(al){
     ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=al;ctx.fillStyle=SIGNC;
     ctx.font=(W*0.030)+'px '+SYMFONT;
-    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.40);ctx.fillText(SG[i]+'︎',g[0],g[1]);}
+    for(var i=0;i<12;i++){var g=xy(i*30+15,R*1.205);ctx.fillText(SG[i]+'︎',g[0],g[1]);}
     ctx.globalAlpha=1;
   }
-  function drawAspects(al){
+  function drawAspects(al,t){
     if(!C.aspects)return;ctx.save();ctx.lineCap='round';
     for(var i=0;i<C.aspects.length;i++){var as=C.aspects[i];var A=PPOS[as.a],B=PPOS[as.b];if(!A||!B)continue;
-      var moon=(as.a===C.moonIdx||as.b===C.moonIdx);var aa=al*(0.12+as.s*0.30)*(moon?1.7:1);
-      ctx.strokeStyle='rgba('+GLOW+','+aa+')';ctx.lineWidth=moon?1.4:0.9;
-      ctx.shadowColor='rgba('+GLOW+',0.7)';ctx.shadowBlur=moon?10:6;
-      ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();}
+      var moon=(as.a===C.moonIdx||as.b===C.moonIdx);
+      ctx.strokeStyle='rgba('+GLOW+','+(al*0.08)+')';ctx.lineWidth=moon?1:0.7;
+      ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();
+      if(reduce)continue;
+      var dur=1500+(as.a%4)*180,fr=((t+i*330)%dur)/dur;
+      var px=A[0]+(B[0]-A[0])*fr,py=A[1]+(B[1]-A[1])*fr;
+      ctx.globalAlpha=Math.min(1,al*(0.55+as.s*0.45)*(moon?1.3:1));ctx.fillStyle='#ffe7a8';
+      ctx.shadowColor='rgba('+GLOW+',0.95)';ctx.shadowBlur=moon?15:9;
+      ctx.beginPath();ctx.arc(px,py,moon?2.7:1.9,0,6.2832);ctx.fill();ctx.shadowBlur=0;
+      var f2=fr-0.05;if(f2>0){ctx.globalAlpha=al*0.32;ctx.beginPath();ctx.arc(A[0]+(B[0]-A[0])*f2,A[1]+(B[1]-A[1])*f2,1.1,0,6.2832);ctx.fill();}
+      ctx.globalAlpha=1;}
     ctx.restore();
   }
   function crisp(t){
@@ -228,7 +235,8 @@ _NATAL_JS = r"""
     stardust(t);
     var wf=reduce?1:ease(cl(t/700));
     drawWheel(wf);drawCon(t,reduce?1:ease(cl((t-300)/900)));drawSignLabels(reduce?1:ease(cl((t-500)/700)));
-    drawAspects(reduce?1:ease(cl((t-1900)/900)));
+    var cg=ctx.createRadialGradient(cx,cy,0,cx,cy,R*0.55);cg.addColorStop(0,'rgba('+GLOW+','+(0.06*wf)+')');cg.addColorStop(1,'rgba('+GLOW+',0)');ctx.fillStyle=cg;ctx.beginPath();ctx.arc(cx,cy,R*0.55,0,6.2832);ctx.fill();
+    drawAspects(reduce?1:ease(cl((t-1700)/900)),t);
     for(var i=0;i<PA.length;i++){var p=PA[i];var G=GL[p.gi];
       var settle=reduce?1:cl((t-(G.start+G.dur))/520);if(settle>=1)continue;
       var ap=reduce?1:ease(cl((t-G.start)/G.dur));var x,y,al;
