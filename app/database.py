@@ -77,6 +77,9 @@ _MEM_LIMIT = 100
 _MEM_PROFILES: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
 
 
+_MEM_USERS: dict[int, dict[str, Any]] = {}
+
+
 def _mem_put(profile_id: Optional[str], profile: dict[str, Any]) -> None:
     if not profile_id:
         return
@@ -100,8 +103,14 @@ def db_status() -> dict[str, Any]:
     return {"configured": True, "alive": True, "error": ""}
 
 
-@_safe(None)
 def get_user(telegram_id: int) -> Optional[dict[str, Any]]:
+    """Данные пользователя из БД; если БД недоступна — из кэша процесса."""
+    row = _get_user_db(telegram_id)
+    return row if row is not None else _MEM_USERS.get(telegram_id)
+
+
+@_safe(None)
+def _get_user_db(telegram_id: int) -> Optional[dict[str, Any]]:
     """Сохранённые данные пользователя (имя, дата) — чтобы не вводить заново."""
     if supabase is None:
         return None
@@ -109,15 +118,26 @@ def get_user(telegram_id: int) -> Optional[dict[str, Any]]:
     return res.data[0] if res.data else None
 
 
-@_safe(None)
-def upsert_user(telegram_id: int, fields: dict[str, Any]) -> None:
-    """Создать/обновить данные пользователя."""
+def upsert_user(telegram_id: int, fields: dict[str, Any]) -> bool:
+    """Создать/обновить данные пользователя. True — легло в БД, False — только в память.
+
+    Память нужна, чтобы при недоступной БД анкета не обнулялась и разбор всё равно шёл.
+    """
+    mem = dict(_MEM_USERS.get(telegram_id) or {})
+    mem.update({"telegram_id": telegram_id, **fields})
+    _MEM_USERS[telegram_id] = mem
+    return bool(_upsert_user_db(telegram_id, fields))
+
+
+@_safe(False)
+def _upsert_user_db(telegram_id: int, fields: dict[str, Any]) -> bool:
     if supabase is None:
-        return
+        return False
     from datetime import datetime, timezone
 
     row = {"telegram_id": telegram_id, "updated_at": datetime.now(timezone.utc).isoformat(), **fields}
     supabase.table("me_users").upsert(row, on_conflict="telegram_id").execute()
+    return True
 
 
 def save_profile(profile: dict[str, Any], telegram_id: Optional[int] = None) -> Optional[str]:

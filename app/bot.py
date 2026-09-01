@@ -138,11 +138,16 @@ async def onb_birthdate(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     except ValueError:
         await update.message.reply_text("Нужен формат ГГГГ-ММ-ДД, например 1988-11-03.")
         return ASK_BIRTHDATE
-    await asyncio.to_thread(
+    saved = await asyncio.to_thread(
         database.upsert_user,
         update.effective_user.id,
         {"name": ctx.user_data["name"], "birth_date": bd.isoformat()},
     )
+    if not saved:
+        await update.message.reply_text(
+            "⚠️ База сейчас недоступна — данные держу только на время сессии, "
+            "после перезапуска бота их придётся ввести заново. Разборы при этом работают."
+        )
     await update.message.reply_text(_ASTRO_PITCH, reply_markup=SKIP_MENU)
     return ASK_TIME
 
@@ -191,14 +196,51 @@ async def _finish_or_run(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+# ---------- нажатие кнопки меню внутри анкеты ----------
+_MENU_BUTTONS = (
+    BTN_PERSON, BTN_PERIOD, BTN_WORK, BTN_COMPAT, BTN_EVENT, BTN_DATA,
+    BTN_EDIT_NAME, BTN_EDIT_DATE, BTN_EDIT_TIME, BTN_EDIT_PLACE, BTN_EDIT_GENDER, BTN_BACK,
+)
+MENU_RE = "^(" + "|".join(re.escape(b) for b in _MENU_BUTTONS) + ")$"
+_MENU_ROUTES: dict = {}  # кнопка → хендлер; заполняется в build_application
+
+
+async def partner_menu_interrupt(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """То же для анкеты партнёра: выходим из неё, не записывая кнопку как имя/дату."""
+    await update.message.reply_text(
+        "Добавление партнёра прервано. Нажми нужную кнопку ещё раз.", reply_markup=MAIN_MENU
+    )
+    return ConversationHandler.END
+
+
+async def menu_interrupt(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """Внутри анкеты нажали кнопку меню — выполняем её, а не записываем как имя/дату.
+
+    Без этого «🧬 Личность» на вопросе «как тебя зовут?» сохранялась как имя,
+    а «👤 Мои данные» на вопросе про дату давала «Нужен формат ГГГГ-ММ-ДД».
+    """
+    ctx.user_data.pop("pending_label", None)
+    fn = _MENU_ROUTES.get((update.message.text or "").strip())
+    if fn is None:
+        return ConversationHandler.END
+    res = await fn(update, ctx)
+    return res if isinstance(res, int) else ConversationHandler.END
+
+
 # ---------- разбор одним тапом ----------
 async def analysis_entry(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     """Тап по разбору. Если нет времени/места — сначала предлагаем их дать."""
     label = update.message.text
     user = await asyncio.to_thread(database.get_user, update.effective_user.id)
     if not user or not user.get("birth_date"):
-        await update.message.reply_text("Сначала сохраним данные — нажми /start.")
-        return ConversationHandler.END
+        # не тупик «нажми /start»: сразу спрашиваем данные и запускаем разбор после них
+        ctx.user_data["pending_label"] = label
+        if not user or not user.get("name"):
+            await update.message.reply_text("Сохраню данные один раз. Как тебя зовут? (имя или ФИО)")
+            return ASK_NAME
+        ctx.user_data["name"] = user["name"]
+        await update.message.reply_text("Дата рождения в формате ГГГГ-ММ-ДД (например, 1990-05-15):")
+        return ASK_BIRTHDATE
 
     has_time = bool(user.get("birth_time"))
     has_place = bool(user.get("timezone") and user.get("lat") is not None)
@@ -986,6 +1028,22 @@ def build_application() -> Application:
     app = Application.builder().token(_token()).build()
     app.add_error_handler(on_error)
 
+    global _MENU_ROUTES
+    _MENU_ROUTES = {
+        BTN_PERSON: analysis_entry,
+        BTN_PERIOD: analysis_entry,
+        BTN_WORK: analysis_entry,
+        BTN_COMPAT: compat_menu,
+        BTN_EVENT: event_start,
+        BTN_DATA: show_data,
+        BTN_EDIT_NAME: edit_name_start,
+        BTN_EDIT_DATE: edit_date_start,
+        BTN_EDIT_TIME: edit_time_start,
+        BTN_EDIT_PLACE: edit_place_start,
+        BTN_EDIT_GENDER: edit_gender_start,
+        BTN_BACK: back_to_menu,
+    }
+    menu_break = MessageHandler(filters.Regex(MENU_RE), menu_interrupt)
     skip = MessageHandler(filters.Regex(_SKIP_RE), onb_skip)
     common_fallbacks = [
         CommandHandler("cancel", cmd_cancel),
@@ -1005,31 +1063,32 @@ def build_application() -> Application:
             MessageHandler(filters.Regex(f"^{BTN_EDIT_GENDER}$"), edit_gender_start),
         ],
         states={
-            ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, onb_name)],
-            ASK_BIRTHDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, onb_birthdate)],
-            ASK_TIME: [skip, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_time)],
-            ASK_PLACE: [skip, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_place)],
-            EDIT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_name_save)],
-            EDIT_BIRTHDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_date_save)],
-            EDIT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_time_save)],
-            EDIT_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_place_save)],
-            EDIT_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_gender_save)],
-            EV_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, event_date_save)],
-            EV_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, event_desc_save)],
+            ASK_NAME: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_name)],
+            ASK_BIRTHDATE: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_birthdate)],
+            ASK_TIME: [menu_break, skip, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_time)],
+            ASK_PLACE: [menu_break, skip, MessageHandler(filters.TEXT & ~filters.COMMAND, onb_place)],
+            EDIT_NAME: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, edit_name_save)],
+            EDIT_BIRTHDATE: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, edit_date_save)],
+            EDIT_TIME: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, edit_time_save)],
+            EDIT_PLACE: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, edit_place_save)],
+            EDIT_GENDER: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, edit_gender_save)],
+            EV_DATE: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, event_date_save)],
+            EV_DESC: [menu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, event_desc_save)],
         },
         fallbacks=common_fallbacks,
     )
     app.add_handler(conv)
 
     # Добавление партнёра — отдельная беседа, вход по инлайн-кнопке «Добавить».
+    pmenu_break = MessageHandler(filters.Regex(MENU_RE), partner_menu_interrupt)
     pskip = MessageHandler(filters.Regex(_SKIP_RE), partner_skip)
     partner_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(partner_add_start, pattern="^p:add$")],
         states={
-            P_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, partner_name)],
-            P_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, partner_date)],
-            P_TIME: [pskip, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_time)],
-            P_PLACE: [pskip, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_place)],
+            P_NAME: [pmenu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_name)],
+            P_DATE: [pmenu_break, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_date)],
+            P_TIME: [pmenu_break, pskip, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_time)],
+            P_PLACE: [pmenu_break, pskip, MessageHandler(filters.TEXT & ~filters.COMMAND, partner_place)],
         },
         fallbacks=common_fallbacks,
     )
