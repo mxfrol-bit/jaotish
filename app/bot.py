@@ -213,6 +213,24 @@ async def partner_menu_interrupt(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 
+async def unknown_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Последний хендлер: бот никогда не молчит.
+
+    Раньше любой текст вне анкеты и вне кнопок («привет», ответ после рестарта
+    процесса, когда состояние беседы потеряно) не попадал ни в один хендлер —
+    бот просто не отвечал, и пользователь не понимал, что делать.
+    """
+    user = await asyncio.to_thread(database.get_user, update.effective_user.id)
+    if user and user.get("name") and user.get("birth_date"):
+        await update.message.reply_text("Выбери разбор кнопкой ниже:", reply_markup=MAIN_MENU)
+    else:
+        await update.message.reply_text(
+            "Я работаю по кнопкам. Нажми «🧬 Личность» — заодно сохраню твои данные, "
+            "или /start, чтобы начать сначала.",
+            reply_markup=MAIN_MENU,
+        )
+
+
 async def menu_interrupt(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     """Внутри анкеты нажали кнопку меню — выполняем её, а не записываем как имя/дату.
 
@@ -581,7 +599,9 @@ async def compat_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """Кнопка «Совместимость»: список сохранённых партнёров + «Добавить»."""
     user = await asyncio.to_thread(database.get_user, update.effective_user.id)
     if not user or not user.get("birth_date"):
-        await update.message.reply_text("Сначала сохрани свои данные — /start.")
+        await update.message.reply_text(
+            "Сначала сохраню твои данные: нажми «🧬 Личность» или /start.", reply_markup=MAIN_MENU
+        )
         return
     await _send_partner_menu(update.message, update.effective_user.id)
 
@@ -670,7 +690,9 @@ async def _do_synastry(msg, telegram_id: int, partner_id: str) -> None:
 async def event_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     user = await asyncio.to_thread(database.get_user, update.effective_user.id)
     if not user or not user.get("birth_date"):
-        await update.message.reply_text("Сначала сохрани свои данные — /start.")
+        await update.message.reply_text(
+            "Сначала сохраню твои данные: нажми «🧬 Личность» или /start.", reply_markup=MAIN_MENU
+        )
         return ConversationHandler.END
     ctx.user_data.pop("ev_date", None)
     await update.message.reply_text(
@@ -835,7 +857,9 @@ async def _finish_partner(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int
 async def show_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     user = await asyncio.to_thread(database.get_user, update.effective_user.id)
     if not user:
-        await update.message.reply_text("Данных пока нет — нажми /start.")
+        await update.message.reply_text(
+            "Данных пока нет. Нажми «🧬 Личность» — соберу их по ходу.", reply_markup=MAIN_MENU
+        )
         return
     astro = "✅ подключены" if (user.get("birth_time") and user.get("timezone")) else "⛔ нужны время и место"
     await update.message.reply_text(
@@ -1101,6 +1125,8 @@ def build_application() -> Application:
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DATA}$"), show_data))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BACK}$"), back_to_menu))
     app.add_handler(CallbackQueryHandler(on_callback))
+    # Самым последним: любой текст, не подошедший никуда, — вместо тишины показываем меню.
+    app.add_handler(MessageHandler(filters.TEXT, unknown_text))
     return app
 
 
