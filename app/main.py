@@ -49,11 +49,16 @@ app.include_router(web.router)  # "/" (лендинг+форма), "/report", "/
 
 @app.get("/status")
 def status() -> dict:
+    from . import database
+
+    db = database.db_status()
     return {
         "service": "matrix-engine",
         "method_version": config.METHOD_VERSION,
         "ai_ready": config.ai_ready(),
-        "db_ready": config.db_ready(),
+        "db_ready": config.db_ready(),   # заданы ли переменные
+        "db_alive": db["alive"],         # реально ли отвечает база
+        "db_error": db["error"],
         "bot_ready": config.bot_ready(),
     }
 
