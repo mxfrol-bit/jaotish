@@ -27,8 +27,12 @@ create table if not exists me_users (
     lat          double precision,  -- предрассчитанные координаты
     lon          double precision,
     timezone     text,              -- IANA-таймзона места рождения
+    time_precision text,            -- exact | approx | unknown: насколько точно известно время
+    focus        text,              -- что важнее сейчас: self | relationships | work | period
     updated_at   timestamptz not null default now()
 );
+-- Добавлено 2026-09-13 (миграция add_time_precision_focus):
+-- alter table me_users add column if not exists time_precision text, add column if not exists focus text;
 
 -- Партнёры для синастрии (совместимость с конкретным человеком).
 create table if not exists me_partners (

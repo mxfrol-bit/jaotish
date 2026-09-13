@@ -180,20 +180,22 @@ def _get_profile_db(profile_id: str) -> Optional[dict[str, Any]]:
 
 
 @_safe(None)
-def find_recent_profile(telegram_id: int, analysis_type: str) -> Optional[dict[str, Any]]:
-    """Последний сохранённый разбор этого типа — для кэша (не гонять AI повторно).
+def find_recent_profile(
+    telegram_id: int, analysis_type: str, main_request: Optional[str] = None
+) -> Optional[dict[str, Any]]:
+    """Последний сохранённый разбор этого типа (и этого вопроса) — для кэша, чтобы не гонять AI повторно.
     Возвращает {data, created_at} или None."""
     if supabase is None:
         return None
-    res = (
+    q = (
         supabase.table("me_profiles")
         .select("data,created_at")
         .eq("telegram_id", telegram_id)
         .eq("analysis_type", analysis_type)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
     )
+    if main_request is not None:
+        q = q.eq("data->user_input->>main_request", main_request)
+    res = q.order("created_at", desc=True).limit(1).execute()
     return res.data[0] if res.data else None
 
 
@@ -257,16 +259,28 @@ def delete_partner(partner_id: str) -> None:
     supabase.table("me_partners").delete().eq("partner_id", partner_id).execute()
 
 
-@_safe(None)
 def set_cover(profile_id: str, url: str) -> None:
     """Запомнить URL AI-обложки в data профиля (чтобы не платить Replicate повторно)."""
+    set_profile_field(profile_id, "cover_url", url)
+
+
+def set_profile_field(profile_id: str, key: str, value: Any) -> None:
+    """Дописать поле верхнего уровня в data профиля: в память — всегда, в БД — если жива."""
+    mem = _MEM_PROFILES.get(profile_id)
+    if mem is not None:
+        mem[key] = value
+    _set_profile_field_db(profile_id, key, value)
+
+
+@_safe(None)
+def _set_profile_field_db(profile_id: str, key: str, value: Any) -> None:
     if supabase is None:
         return
     res = supabase.table("me_profiles").select("data").eq("profile_id", profile_id).limit(1).execute()
     if not res.data:
         return
     data = res.data[0]["data"] or {}
-    data["cover_url"] = url
+    data[key] = value
     supabase.table("me_profiles").update({"data": data}).eq("profile_id", profile_id).execute()
 
 

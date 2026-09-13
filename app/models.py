@@ -18,6 +18,7 @@ class CalculationStatus(str, Enum):
 class AnalysisType(str, Enum):
     personality = "personality"
     compatibility = "compatibility"
+    relationships = "relationships"  # отношения: потребности, сценарии, подходящий партнёр
     work = "work"
     current_period = "current_period"
     event = "event"  # конкретная дата/сделка: что она активирует + вердикт «стоит ли»
@@ -28,9 +29,13 @@ class UserInput(BaseModel):
     gender: str = ""
     birth_date: date
     birth_time: Optional[str] = None
+    time_precision: str = ""  # exact | approx | unknown — насколько точно известно время
     birth_place: Optional[str] = None
     current_city: Optional[str] = None
     event_date: Optional[date] = None  # дата события/сделки (для analysis_type=event)
+    period_from: Optional[date] = None  # границы периода (для analysis_type=current_period)
+    period_to: Optional[date] = None
+    focus: str = ""  # что человеку сейчас важнее: self | relationships | work | period
     main_request: str = ""
     analysis_type: AnalysisType = AnalysisType.personality
 
@@ -41,11 +46,15 @@ class ProfileRequest(BaseModel):
     gender: str = ""
     birth_date: date
     birth_time: Optional[str] = None
+    time_precision: str = ""
     birth_place: Optional[str] = None
     # Предрассчитанные координаты/таймзона (бот хранит их, чтобы не геокодить каждый раз).
     lat: Optional[float] = None
     lon: Optional[float] = None
     timezone: Optional[str] = None
+    period_from: Optional[date] = None
+    period_to: Optional[date] = None
+    focus: str = ""
     main_request: str = ""
     analysis_type: AnalysisType = AnalysisType.personality
 

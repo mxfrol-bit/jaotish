@@ -287,7 +287,11 @@ def build_profile(req: ProfileRequest, today: date | None = None) -> Profile:
         gender=req.gender,
         birth_date=birth,
         birth_time=req.birth_time,
+        time_precision=req.time_precision,
         birth_place=req.birth_place,
+        period_from=req.period_from,
+        period_to=req.period_to,
+        focus=req.focus,
         main_request=req.main_request,
         analysis_type=req.analysis_type,
     )
