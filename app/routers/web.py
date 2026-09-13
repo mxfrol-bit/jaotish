@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import calendar
 import html
 import json as _json
 import re
@@ -29,7 +30,8 @@ from .. import config, database, tts, viz
 from ..calc import astrology
 from ..engine import build_event, build_profile, build_synastry
 from ..models import AnalysisType, ProfileRequest
-from ..synthesis import CREDIBILITY, LOADING_MESSAGES, METHOD_BASIS
+from .. import synthesis
+from ..synthesis import ANALYSIS_TITLES, LOADING_MESSAGES, METHOD_BASIS, date_ru
 
 router = APIRouter(tags=["web"])
 
@@ -329,20 +331,28 @@ def _positions_html(data: dict) -> str:
         f"<div class=planets>{''.join(rows)}</div>"
     )
 
-_ANALYSIS_LABELS = {
-    "personality": "Личность — базовый код",
-    "current_period": "Текущий период",
-    "work": "Деньги и реализация",
+_ANALYSIS_LABELS = ANALYSIS_TITLES
+
+# Общий вопрос темы — то, что веб-форма спрашивает у AI (в боте вопрос выбирают кнопкой).
+_GENERAL_QUESTION = {
+    "personality": "Общий разбор характера: сильные стороны, привычные реакции, что мешает.",
+    "relationships": "Общий разбор темы отношений: потребности, сценарии, подходящий партнёр.",
+    "work": "Общий разбор темы работы и денег: способности, формат работы, отношение к деньгам.",
+    "current_period": "Какие темы выделяются в ближайший месяц? Что усиливается, где терять силы, что делать.",
 }
 
-_FEATURES = [
-    ("🧬", "Личность", "Базовый код: сильные стороны, где сам себе мешаешь, главный внутренний конфликт."),
-    ("🌗", "Текущий период", "Какая тема включена сейчас, где легко слить силу, окно возможностей."),
-    ("💼", "Деньги и реализация", "Как ты зарабатываешь, как саботируешь, где профессиональная сила."),
-    ("❤️", "Совместимость", "Резонанс двух кодов: где усиливаете, где триггерите, как восстановиться."),
-    ("🤝", "Сделка / Событие", "Оценка конкретной даты: что она включает и стоит ли в неё входить."),
-    ("🎨", "Карта и озвучка", "Визуальная карта профиля и аудио-разбор голосом — в один тап."),
-]
+
+def _parse_date(raw: str) -> date | None:
+    """ДД.ММ.ГГГГ или ГГГГ-ММ-ДД (браузерный <input type=date> шлёт ISO)."""
+    txt = (raw or "").strip()
+    m = re.match(r"^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$", txt)
+    try:
+        if m:
+            d, mo, y = (int(x) for x in m.groups())
+            return date(y, mo, d)
+        return date.fromisoformat(txt)
+    except ValueError:
+        return None
 
 _CSS = """
 :root{--ink:#ece7d8;--muted:#8f8f8a;--line:rgba(255,255,255,.12);--bg:#08090c;
@@ -512,7 +522,7 @@ def _nav() -> str:
     return (
         "<div class=wrap><div class=nav><a class=brand href='/'>Матрица<span>.</span></a>"
         "<div class=navlinks><a href='/compat'>Совместимость</a>"
-        "<a href='/event'>Сделка</a><a href='/proof'>Точность</a>"
+        "<a href='/event'>Выбор даты</a><a href='/proof'>Точность</a>"
         "<a href='/about'>Как это работает</a></div></div></div>"
     )
 
@@ -811,46 +821,58 @@ def _build_and_save(pid: str, req: ProfileRequest, where: str) -> None:
 def report(
     background_tasks: BackgroundTasks,
     name: str = Form(""),
+    gender: str = Form(""),
     birth_date: str = Form(...),
     birth_time: str = Form(""),
+    time_precision: str = Form("exact"),
     birth_place: str = Form(""),
     analysis_type: str = Form("personality"),
 ) -> str:
-    try:
-        bd = date.fromisoformat(birth_date.strip())
-    except ValueError:
+    bd = _parse_date(birth_date)
+    if not bd:
         return _page("Ошибка", f"{_nav()}<div class=wrap><h1>Неверная дата</h1>"
-                     "<p>Формат: ГГГГ-ММ-ДД.</p><a href='/'>← назад</a></div>")
+                     "<p>Формат: ДД.ММ.ГГГГ.</p><a href='/'>← назад</a></div>")
     try:
         atype = AnalysisType(analysis_type)
     except ValueError:
         atype = AnalysisType.personality
+    bt = birth_time.strip() or None
+    period = None
+    if atype == AnalysisType.current_period:
+        today = date.today()
+        period = (today, date(today.year, today.month, calendar.monthrange(today.year, today.month)[1]))
     req = ProfileRequest(
-        name=name.strip(), birth_date=bd,
-        birth_time=(birth_time.strip() or None), birth_place=(birth_place.strip() or None),
-        main_request=_ANALYSIS_LABELS.get(analysis_type, ""), analysis_type=atype,
+        name=name.strip(), gender=gender.strip(), birth_date=bd,
+        birth_time=bt, time_precision=(time_precision if bt else "unknown"),
+        birth_place=(birth_place.strip() or None),
+        period_from=period[0] if period else None, period_to=period[1] if period else None,
+        main_request=_GENERAL_QUESTION.get(atype.value, ""), analysis_type=atype,
     )
     pid = uuid.uuid4().hex
     background_tasks.add_task(_build_and_save, pid, req, "web/report")
-    return _spinner_page(pid, "Считаю твой код…",
-                         "Беру астрономические параметры момента рождения и перевожу в поведенческий профиль. До минуты.")
+    return _spinner_page(pid, "Собираю разбор…",
+                         "Считаю параметры момента рождения и перевожу их в понятный текст. До минуты.")
 
 
 # ---------------- совместимость ----------------
 @router.get("/compat", response_class=HTMLResponse)
 def compat_form() -> str:
-    body = f"""{_nav()}{_hero('Совместимость', 'Резонанс двух кодов', 'Где вы усиливаете и где триггерите друг друга — без приговора «вместе/нет».')}
+    body = f"""{_nav()}{_hero('Совместимость', 'Разбор с конкретным человеком', 'Где вы усиливаете друг друга, где задеваете и как общаться — без приговора «вместе/нет».')}
     <div class=wrap id=form>
       <div class=formcard>
         <div class=tabbar>
-          <a class=tab href='/#form'>Личность / период / деньги</a>
+          <a class=tab href='/#form'>Обо мне / отношения / работа / период</a>
           <span class='tab on'>Совместимость</span>
-          <a class=tab href='/event'>Сделка / событие</a>
+          <a class=tab href='/event'>Выбор даты</a>
         </div>
         <form method=post action='/compat/run'>
           <div class=row>
             <div><label>Твоё имя</label><input name=name_a required></div>
+            <div><label>Твой пол</label><select name=gender_a required><option value='' disabled selected>Выбери</option><option value='ж'>Женщина</option><option value='м'>Мужчина</option></select></div>
+          </div>
+          <div class=row>
             <div><label>Твоя дата рождения</label><input name=date_a type=date required></div>
+            <div></div>
           </div>
           <div class=row>
             <div><label>Твоё время (по желанию)</label><input name=time_a placeholder='14:30'></div>
@@ -865,8 +887,8 @@ def compat_form() -> str:
             <div><label>Время партнёра (по желанию)</label><input name=time_b placeholder='09:15'></div>
             <div><label>Город партнёра (по желанию)</label><input name=place_b placeholder='Казань'></div>
           </div>
-          <button type=submit>Показать резонанс</button>
-          <p class=note>Это карта, где вы усиливаете и где триггерите друг друга — без приговора «вместе/нет».</p>
+          <button type=submit>Получить разбор</button>
+          <p class=note>Разбор показывает, где вы усиливаете друг друга и где задеваете, — это интерпретация, а не вердикт «вместе/нет».</p>
         </form>
       </div>
     </div>"""
@@ -886,42 +908,45 @@ def _build_synastry_and_save(pid: str, a: ProfileRequest, b: ProfileRequest) -> 
 @router.post("/compat/run", response_class=HTMLResponse)
 def compat_run(
     background_tasks: BackgroundTasks,
-    name_a: str = Form(""), date_a: str = Form(...), time_a: str = Form(""), place_a: str = Form(""),
+    name_a: str = Form(""), gender_a: str = Form(""), date_a: str = Form(...), time_a: str = Form(""), place_a: str = Form(""),
     name_b: str = Form(""), date_b: str = Form(...), time_b: str = Form(""), place_b: str = Form(""),
 ) -> str:
-    try:
-        bda, bdb = date.fromisoformat(date_a.strip()), date.fromisoformat(date_b.strip())
-    except ValueError:
+    bda, bdb = _parse_date(date_a), _parse_date(date_b)
+    if not bda or not bdb:
         return _page("Ошибка", f"{_nav()}<div class=wrap><h1>Неверная дата</h1><a href='/compat'>← назад</a></div>")
-    a = ProfileRequest(name=name_a.strip(), birth_date=bda, birth_time=(time_a.strip() or None),
+    a = ProfileRequest(name=name_a.strip(), gender=gender_a.strip(), birth_date=bda, birth_time=(time_a.strip() or None),
                        birth_place=(place_a.strip() or None), analysis_type=AnalysisType.compatibility)
     b = ProfileRequest(name=name_b.strip(), birth_date=bdb, birth_time=(time_b.strip() or None),
                        birth_place=(place_b.strip() or None), analysis_type=AnalysisType.compatibility)
     pid = uuid.uuid4().hex
     background_tasks.add_task(_build_synastry_and_save, pid, a, b)
     return _spinner_page(pid, "Считаю ваш резонанс…",
-                         "Сравниваю два кода: где усиливаете и где триггерите друг друга. До минуты.")
+                         "Смотрю, где вы усиливаете друг друга и где задеваете. До минуты.")
 
 
 # ---------------- сделка / событие ----------------
 @router.get("/event", response_class=HTMLResponse)
 def event_form() -> str:
-    body = f"""{_nav()}{_hero('Сделка / событие', 'Электив на дату', 'Стоит ли входить в конкретную дату: что она включает у тебя.')}
+    body = f"""{_nav()}{_hero('Выбор даты', 'Подходит ли день для дела', 'Оценка конкретной даты для сделки, переговоров, запуска или важного разговора.')}
     <div class=wrap id=form>
       <div class=formcard>
         <div class=tabbar>
-          <a class=tab href='/#form'>Личность / период / деньги</a>
+          <a class=tab href='/#form'>Обо мне / отношения / работа / период</a>
           <a class=tab href='/compat'>Совместимость</a>
-          <span class='tab on'>Сделка / событие</span>
+          <span class='tab on'>Выбор даты</span>
         </div>
         <form method=post action='/event/run'>
           <div class=row>
             <div><label>Имя</label><input name=name required></div>
-            <div><label>Дата рождения</label><input name=birth_date type=date required></div>
+            <div><label>Пол</label><select name=gender required><option value='' disabled selected>Выбери</option><option value='ж'>Женщина</option><option value='м'>Мужчина</option></select></div>
           </div>
           <div class=row>
+            <div><label>Дата рождения</label><input name=birth_date type=date required></div>
             <div><label>Время рождения (по желанию)</label><input name=birth_time placeholder='14:30'></div>
+          </div>
+          <div class=row>
             <div><label>Город рождения (по желанию)</label><input name=birth_place placeholder='Москва'></div>
+            <div></div>
           </div>
           <hr>
           <div class=row>
@@ -933,7 +958,7 @@ def event_form() -> str:
         </form>
       </div>
     </div>"""
-    return _page("Сделка / событие · Матрица", body)
+    return _page("Выбор даты · Матрица", body)
 
 
 def _build_event_and_save(pid: str, req: ProfileRequest, ev: date, desc: str) -> None:
@@ -949,29 +974,30 @@ def _build_event_and_save(pid: str, req: ProfileRequest, ev: date, desc: str) ->
 @router.post("/event/run", response_class=HTMLResponse)
 def event_run(
     background_tasks: BackgroundTasks,
-    name: str = Form(""), birth_date: str = Form(...), birth_time: str = Form(""), birth_place: str = Form(""),
-    event_date: str = Form(...), event_desc: str = Form(""),
+    name: str = Form(""), gender: str = Form(""), birth_date: str = Form(...), birth_time: str = Form(""),
+    birth_place: str = Form(""), event_date: str = Form(...), event_desc: str = Form(""),
 ) -> str:
-    try:
-        bd, ev = date.fromisoformat(birth_date.strip()), date.fromisoformat(event_date.strip())
-    except ValueError:
+    bd, ev = _parse_date(birth_date), _parse_date(event_date)
+    if not bd or not ev:
         return _page("Ошибка", f"{_nav()}<div class=wrap><h1>Неверная дата</h1><a href='/event'>← назад</a></div>")
-    req = ProfileRequest(name=name.strip(), birth_date=bd, birth_time=(birth_time.strip() or None),
+    req = ProfileRequest(name=name.strip(), gender=gender.strip(), birth_date=bd, birth_time=(birth_time.strip() or None),
                          birth_place=(birth_place.strip() or None), main_request=event_desc.strip(),
                          analysis_type=AnalysisType.event)
     pid = uuid.uuid4().hex
     background_tasks.add_task(_build_event_and_save, pid, req, ev, event_desc.strip())
     return _spinner_page(pid, "Оцениваю дату…",
-                         "Считаю, что эта дата включает у тебя, и собираю вывод. До минуты.")
+                         "Смотрю, что эта дата включает у тебя, и собираю вывод. До минуты.")
 
 
 # ---------------- результат ----------------
 def _render_sections(full: str) -> tuple[str, str]:
-    """Markdown отчёта → (оглавление, карточки-секции по ##)."""
+    """Markdown отчёта → (оглавление, карточки-секции по ##). «Коротко» показан выше отдельно."""
     parts = re.split(r"(?m)^## ", full or "")
     toc, cards = [], []
     for i, part in enumerate(parts[1:]):
         title = part.split("\n", 1)[0].strip()
+        if title.lower() == synthesis.SHORT_SECTION.lower():
+            continue
         body_md = part[len(title):]
         anchor = f"s{i}"
         toc.append(f"<a href='#{anchor}'>{html.escape(title)}</a>")
@@ -1150,18 +1176,26 @@ def result(pid: str) -> str:
 
     ui = data.get("user_input") or {}
     rep = data.get("report") or {}
-    label = _ANALYSIS_LABELS.get(ui.get("analysis_type") or "", "")
+    atype_val = ui.get("analysis_type") or ""
+    label = _ANALYSIS_LABELS.get(atype_val, "")
+    sub = ""
+    if atype_val == "current_period" and ui.get("period_from"):
+        sub = f"Период: с {date_ru(ui['period_from'])} по {date_ru(ui['period_to'])}"
     title = html.escape(ui.get("name") or "Профиль") + (f" · {html.escape(label)}" if label else "")
-    summary = html.escape((rep.get("short_summary") or "").strip())
-    toc_html, cards = _render_sections(rep.get("full_report") or "")
+    full = rep.get("full_report") or ""
+    short_md = synthesis.short_section(full) or (rep.get("short_summary") or "").strip()
+    summary = _md_to_html(short_md)
+    toc_html, cards = _render_sections(full)
+    mods = data.get("calculation_modules") or {}
+    basis = synthesis.basis_line(mods.get("person_a") or mods if "person_a" in mods else mods)
     tech = rep.get("tech_methods") or ""
-    advanced = (f"<details><summary>Полный технический расчёт</summary>"
+    advanced = (f"<details><summary>Расчёт: что именно посчитано и по каким системам</summary>"
                 f"{_md_to_html(tech)}</details>") if tech else ""
     positions = _positions_html(data)
-    body = f"""{_nav()}{_hero(title, 'Твой разбор')}
+    body = f"""{_nav()}{_hero(title, 'Твой разбор', sub)}
     <div class=wrap>
-      <div class=cred>{html.escape(CREDIBILITY)}</div>
-      {f'<p class=summary>{summary}</p>' if summary else ''}
+      {f'<section class=sec><h2>Коротко</h2>{summary}</section>' if summary else ''}
+      {f'<div class=cred>{html.escape(basis)}</div>' if basis else ''}
       {_natal_block(data, pid)}
       {positions}
       <div class=actions>
@@ -1170,10 +1204,11 @@ def result(pid: str) -> str:
         <a class=btnlink href='/'>Новый разбор</a>
         <a class=btnlink href='/compat'>Совместимость</a>
       </div>
+      <h2 class=more>Подробная расшифровка</h2>
       {toc_html}
       {cards}
       {advanced}
-      <p class=foot>Вероятностная карта для саморефлексии. Важные решения о здоровье, деньгах и отношениях вы принимаете сами.</p>
+      <p class=foot>Это интерпретация, а не вывод о тебе: если что-то не откликается — так бывает. Важные решения о здоровье, деньгах и отношениях ты принимаешь сам(а).</p>
     </div>"""
     return _page("Твой разбор · Матрица", body)
 
