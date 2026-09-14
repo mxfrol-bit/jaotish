@@ -466,13 +466,8 @@ th{color:var(--muted);font-weight:600;}
 
 
 _FONTS = (
-    "<link rel=icon href='/static/particles/mark.svg?v=20260914c' type='image/svg+xml'>"
-    "<link rel=preconnect href='https://fonts.googleapis.com'>"
-    "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
-    "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
-    "family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&"
-    "family=Manrope:wght@400;500;600;700&"
-    "family=IBM+Plex+Mono:wght@400;500&display=swap'>"
+    "<link rel=icon href='/static/signal/mark.svg?v=20260914d' type='image/svg+xml'>"
+    "<link rel=stylesheet href='/static/signal/fonts.css?v=20260914d'>"
 )
 
 
@@ -526,8 +521,7 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
         f"<title>{html.escape(title)}</title>{_FONTS}"
         f"<style>{_CSS}{_HERO_CSS}{_POLISH_CSS}</style>"
         f"<link rel=stylesheet href='/static/pages.css?v=20260914b'>"
-        f"<link rel=stylesheet href='/static/mystic.css?v=20260914b'>"
-        f"<link rel='stylesheet' href='/static/particles.css?v=20260914c'>"
+        f"<link rel=stylesheet href='/static/signal.css?v=20260914d'>"
         f"<script src='/static/reading.js?v=20260914b' defer></script>{head_extra}</head>"
         f"<body>{body}{_REVEAL_JS}</body></html>"
     )
@@ -535,7 +529,7 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
 
 def _nav() -> str:
     return (
-        "<div class=wrap><div class=nav><a class=brand href='/'><img class=brand-emblem src='/static/particles/mark.svg?v=20260914c' alt='' width=30 height=30>Матрица<span>.</span></a>"
+        "<div class=wrap><div class=nav><a class=brand href='/'><img class=brand-emblem src='/static/signal/mark.svg?v=20260914d' alt='' width=26 height=26>Матрица</a>"
         "<div class=navlinks><a href='/compat'>Совместимость</a>"
         "<a href='/event'>Выбор даты</a><a href='/history'>Мои разборы</a>"
         "<a href='/about'>Как это работает</a></div></div></div>"
@@ -588,14 +582,10 @@ _TOPIC_ART = {
 
 
 def _hero(title: str, kicker: str = "", sub: str = "", art: str = "") -> str:
-    """Shared page heading with an optional topic-specific vector engraving."""
+    """A restrained shared heading; decoration stays out of reading pages."""
     k = f"<p class=kicker>{html.escape(kicker)}</p>" if kicker else ""
     s = f"<p class=sub>{html.escape(sub)}</p>" if sub else ""
-    asset = _TOPIC_ART.get(art)
-    emblem = (f"<img class=page-emblem src='/static/particles/{asset}.svg?v=20260914c' "
-              "alt='' aria-hidden=true width=640 height=640>") if asset else ""
-    css = "chero has-emblem" if asset else "chero"
-    return f"<section class='{css}'>{emblem}<div class=inner>{k}<h1>{title}</h1>{s}</div></section>"
+    return f"<section class=chero><div class=inner>{k}<h1>{title}</h1>{s}</div></section>"
 
 
 def _md_to_html(md: str) -> str:
@@ -624,7 +614,7 @@ def _spinner_page(pid: str, title: str, lead: str) -> str:
     started = _job_started.get(pid, time.time())
     body = f"""{_nav()}<main class=waiting-main data-job-id='{safe_pid}' data-started='{started}'>
       <div class=waiting-inner><div class=waiting-orb aria-hidden=true></div>
-      <div class=waiting-eyebrow>Твоя карта становится историей</div>
+      <div class=waiting-eyebrow>Расчёт и интерпретация</div>
       <h1>Собираем твой разбор</h1>
       <p id=waiting-status role=status>Рассчитываем карту и составляем персональный текст.</p>
       <p>Обычно это занимает несколько минут. Можно оставить страницу открытой — готовый разбор появится автоматически.</p>
@@ -1320,13 +1310,8 @@ def dashboard(pid: str) -> str:
         f"<div class=tile><div class=t>{html.escape(t)}</div><div class=d>{html.escape(str(d))}</div></div>"
         for t, d in m["tiles"]
     )
-    fonts = (
-        "<link rel=preconnect href='https://fonts.googleapis.com'>"
-        "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
-        "family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Inter:wght@400;500;600&"
-        "family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap'>"
-    )
-    body = f"""<div class=glow a></div><div class=glow b></div><div class=wrap>
+    fonts = _FONTS
+    body = f"""<div class=wrap>
       <div class=top><span class=brand>Матрица</span>
         <a href='/r/{pid}'>полный разбор →</a></div>
       <div class=kick>Профиль личности</div>
@@ -1348,8 +1333,9 @@ def dashboard(pid: str) -> str:
       document.querySelectorAll('.fill').forEach(function(f){{f.style.width=f.dataset.v+'%';}});}});}});</script>"""
     return (f"<!doctype html><html lang=ru><head><meta charset=utf-8>"
             f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-            f"<title>{name} · Профиль · Матрица</title>{fonts}<style>{_DASH_CSS}</style></head>"
-            f"<body>{body}</body></html>")
+            f"<title>{name} · Профиль · Матрица</title>{fonts}<style>{_DASH_CSS}</style>"
+            f"<link rel=stylesheet href='/static/signal.css?v=20260914d'></head>"
+            f"<body class=profile-page>{body}</body></html>")
 
 
 @router.get("/r/{pid}", response_class=HTMLResponse)

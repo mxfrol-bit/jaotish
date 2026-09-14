@@ -12,25 +12,20 @@
     <meta property="og:title" content="Матрица — лучше понять себя" />
     <meta
       property="og:description"
-      content="Твоя история больше, чем знак зодиака. Персональный разбор о себе, отношениях и своём направлении."
+      content="Увидеть себя за привычными ролями. Персональный разбор характера, отношений и своего направления."
     />
     <meta property="og:type" content="website" />
     <link
       rel="icon"
-      href="/static/particles/mark.svg?v=20260914c"
+      href="/static/signal/mark.svg?v=20260914d"
       type="image/svg+xml"
     />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Manrope:wght@400;450;500;550;600;650;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/static/site.css?v=20260914c" />
-    <link rel="stylesheet" href="/static/mystic.css?v=20260914c" />
+    <link rel="stylesheet" href="/static/signal/fonts.css?v=20260914d" />
+    <link rel="stylesheet" href="/static/site.css?v=20260914d" />
+    <link rel="stylesheet" href="/static/signal.css?v=20260914d" />
     <script src="/static/site.js?v=20260914c" defer></script>
-    <link rel="stylesheet" href="/static/particles.css?v=20260914c" />
-    <script src="/static/particles.js?v=20260914c" defer></script>
+
+    <script type="module" src="/static/signal.js?v=20260914d"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Перейти к содержанию</a>
@@ -38,11 +33,11 @@
       <div class="container header-inner">
         <a class="wordmark" href="/" aria-label="Матрица — главная"
           ><img
-            src="/static/particles/mark.svg?v=20260914c"
+            src="/static/signal/mark.svg?v=20260914d"
             width="31"
             height="31"
             alt=""
-          />Матрица<span class="brand-dot">.</span></a
+          />Матрица</a
         >
         <nav class="desktop-nav" aria-label="Основная навигация">
           <a href="#topics">Темы разбора</a><a href="#how">Как это работает</a
@@ -54,194 +49,135 @@
       </div>
     </header>
     <main id="main">
-      <div class="hero-shell">
+      <div class="signal-experience" id="experience">
+        <div class="signal-stage" aria-hidden="true">
+          <img
+            class="signal-fallback"
+            src="/static/signal/trace.svg?v=20260914d"
+            width="800"
+            height="1000"
+            alt=""
+            fetchpriority="high"
+          />
+          <canvas id="signal-canvas"></canvas>
+          <div class="signal-shade"></div>
+        </div>
         <section class="hero container" aria-labelledby="hero-title">
           <div class="hero-copy">
-            <p class="eyebrow">
-              <span class="tiny-star" aria-hidden="true">✦</span> Джйотиш ·
-              Астрология · Самопознание
-            </p>
+            <p class="eyebrow">Джйотиш / персональный разбор</p>
             <h1 id="hero-title">
-              Твоя история<br />больше, чем<br /><em>знак зодиака.</em>
+              <span class="type-line"><span>Увидеть</span></span
+              ><span class="type-line"><span>себя.</span></span>
             </h1>
             <p class="hero-lead">
-              Узнай, что даёт тебе силы, как ты строишь отношения и куда хочешь
-              двигаться. Персональный разбор по дате рождения — с вниманием к
-              тебе.
+              За привычными ролями.<br />За чужими ожиданиями.
+            </p>
+            <p class="hero-description">
+              Твоя дата рождения — отправная точка.<br />Характер, отношения,
+              своё направление —<br class="desktop-break" />
+              повод посмотреть на себя по-новому.
             </p>
             <div class="hero-actions">
               <a class="button button-sage" href="#form"
-                >Начать свой разбор <span aria-hidden="true">↗</span></a
-              ><a class="text-link" href="#example"
-                >Посмотреть пример <span aria-hidden="true">→</span></a
+                >Исследовать себя <span aria-hidden="true">↗</span></a
+              >
+              <a class="text-link" href="/example"
+                >Пример разбора <span aria-hidden="true">↗</span></a
               >
             </div>
-            <p class="hero-caption">
-              Твой вопрос. Твои данные. Твоё пространство для размышления.
-            </p>
           </div>
-          <figure class="hero-art">
-            <div class="art-topline">
-              <span>Звёздная гравюра</span
-              ><span aria-hidden="true">М / 01</span>
-            </div>
-            <img
-              class="astrolabe particle-origin"
-              src="/static/particles/origin.svg?v=20260914c"
-              width="640"
-              height="640"
-              alt="Золотые частицы и световые нити вокруг тёмного ядра"
-              fetchpriority="high"
-            />
-            <figcaption>
-              <span class="art-cross" aria-hidden="true">+</span
-              ><span
-                >Всё начинается с момента рождения<small
-                  >Рождение света · авторская композиция</small
-                ></span
-              ><span class="art-cross" aria-hidden="true">+</span>
-            </figcaption>
-          </figure>
+          <div class="signal-caption">
+            <span class="signal-caption-label">Личный след</span
+            ><span class="signal-hint">Двигай курсор — меняй форму</span>
+          </div>
+          <div class="hero-floor">
+            <a href="#topics"
+              ><span class="scroll-line" aria-hidden="true"></span>Четыре точки
+              входа</a
+            ><button
+              class="motion-toggle"
+              type="button"
+              aria-pressed="false"
+              hidden
+            >
+              Остановить движение <span aria-hidden="true">Ⅱ</span>
+            </button>
+          </div>
         </section>
-        <div class="hero-bottom container">
-          <span>Понять себя. Увидеть возможности.</span
-          ><a href="#topics"
-            >Найди свой вопрос <span aria-hidden="true">↓</span></a
-          >
-        </div>
-      </div>
-      <section
-        class="topics section container"
-        id="topics"
-        aria-labelledby="topics-title"
-      >
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">01 — Точка интереса</p>
-            <h2 id="topics-title">Что для тебя<br /><em>важно сейчас?</em></h2>
+        <section
+          class="topics section container"
+          id="topics"
+          aria-labelledby="topics-title"
+        >
+          <div class="topics-intro">
+            <p class="eyebrow">Начни с того, что волнует</p>
+            <h2 id="topics-title">У каждого вопроса<br />своя форма.</h2>
           </div>
-          <p>
-            Начни с того, что волнует.<br />К другим темам можно вернуться в
-            любой момент.
-          </p>
-        </div>
-        <div class="topic-grid">
-          <a class="topic-card" href="#form" data-topic="personality">
-            <img
-              class="topic-art"
-              src="/static/particles/self.svg?v=20260914c"
-              width="640"
-              height="640"
-              loading="lazy"
-              decoding="async"
-              alt=""
-              aria-hidden="true"
-            />
-            <div class="card-top"><span class="card-index">01</span></div>
-            <div class="topic-content">
-              <h3>Обо мне</h3>
-              <p>
-                На что я могу опереться? Мои сильные стороны и привычные
-                реакции.
-              </p>
-            </div>
-            <span class="card-link"
-              >Познакомиться с собой<span aria-hidden="true">↗</span></span
-            >
-          </a>
-          <a class="topic-card" href="#form" data-topic="relationships">
-            <img
-              class="topic-art"
-              src="/static/particles/relationships.svg?v=20260914c"
-              width="640"
-              height="640"
-              loading="lazy"
-              decoding="async"
-              alt=""
-              aria-hidden="true"
-            />
-            <div class="card-top"><span class="card-index">02</span></div>
-            <div class="topic-content">
-              <h3>Отношения</h3>
-              <p>
-                Что мне нужно для близости? Потребности, общение и повторяющиеся
-                сценарии.
-              </p>
-            </div>
-            <span class="card-link"
-              >Понять свои чувства<span aria-hidden="true">↗</span></span
-            >
-          </a>
-          <a class="topic-card" href="#form" data-topic="work">
-            <img
-              class="topic-art"
-              src="/static/particles/vocation.svg?v=20260914c"
-              width="640"
-              height="640"
-              loading="lazy"
-              decoding="async"
-              alt=""
-              aria-hidden="true"
-            />
-            <div class="card-top"><span class="card-index">03</span></div>
-            <div class="topic-content">
-              <h3>Работа и деньги</h3>
-              <p>
-                Где раскрываются мои способности? Формат работы, мотивация и
-                привычки.
-              </p>
-            </div>
-            <span class="card-link"
-              >Найти своё направление<span aria-hidden="true">↗</span></span
-            >
-          </a>
-          <a class="topic-card" href="#form" data-topic="current_period">
-            <img
-              class="topic-art"
-              src="/static/particles/rhythm.svg?v=20260914c"
-              width="640"
-              height="640"
-              loading="lazy"
-              decoding="async"
-              alt=""
-              aria-hidden="true"
-            />
-            <div class="card-top"><span class="card-index">04</span></div>
-            <div class="topic-content">
-              <h3>Мой период</h3>
-              <p>
-                На что обратить внимание сейчас? Темы текущего месяца и вопросы
-                к себе.
-              </p>
-            </div>
-            <span class="card-link"
-              >Посмотреть свой период<span aria-hidden="true">↗</span></span
-            >
-          </a>
-        </div>
-        <div class="extra-topics">
-          <p>Хочется посмотреть на ситуацию шире?</p>
-          <a href="/compat"
-            ><img
-              src="/static/particles/resonance.svg?v=20260914c"
-              width="100"
-              height="100"
-              alt=""
-              loading="lazy"
-              aria-hidden="true"
-            />Совместимость с человеком <span aria-hidden="true">↗</span></a
-          ><a href="/event"
-            ><img
-              src="/static/particles/moment.svg?v=20260914c"
-              width="100"
-              height="100"
-              alt=""
-              loading="lazy"
-              aria-hidden="true"
-            />Разбор выбранной даты <span aria-hidden="true">↗</span></a
+          <div
+            class="topic-selector"
+            role="group"
+            aria-label="Выбери тему разбора"
           >
-        </div>
-      </section>
+            <button
+              type="button"
+              class="topic-choice is-active"
+              data-signal-topic="0"
+              aria-pressed="true"
+            >
+              <span class="topic-no">01</span
+              ><span class="topic-name">Я и мой характер</span
+              ><span class="topic-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              type="button"
+              class="topic-choice"
+              data-signal-topic="1"
+              aria-pressed="false"
+            >
+              <span class="topic-no">02</span
+              ><span class="topic-name">Я и другие</span
+              ><span class="topic-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              type="button"
+              class="topic-choice"
+              data-signal-topic="2"
+              aria-pressed="false"
+            >
+              <span class="topic-no">03</span
+              ><span class="topic-name">Моё дело</span
+              ><span class="topic-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              type="button"
+              class="topic-choice"
+              data-signal-topic="3"
+              aria-pressed="false"
+            >
+              <span class="topic-no">04</span
+              ><span class="topic-name">Мой период</span
+              ><span class="topic-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <div class="topic-detail" aria-live="polite" aria-atomic="true">
+            <p id="topic-description">
+              Сильные стороны, привычные реакции и то, на что можно опереться.
+            </p>
+            <a
+              id="topic-start"
+              class="text-link"
+              href="#form"
+              data-topic="personality"
+              >Разобрать мой характер <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="extra-topics">
+            <a href="/compat"
+              >Совместимость <span aria-hidden="true">↗</span></a
+            ><a href="/event">Выбор даты <span aria-hidden="true">↗</span></a>
+          </div>
+        </section>
+      </div>
       <section
         class="example-section"
         id="example"
@@ -249,10 +185,8 @@
       >
         <div class="container example-grid">
           <div class="example-copy">
-            <p class="eyebrow">02 — Без загадочных формулировок</p>
-            <h2 id="example-title">
-              Не просто прочитать.<br /><em>Узнать себя.</em>
-            </h2>
+            <p class="eyebrow">Внутри разбора</p>
+            <h2 id="example-title">Слова, в которых<br />узнаёшь себя.</h2>
             <p>
               Сначала — главная мысль и несколько наблюдений. Затем — подробная
               расшифровка и маленький шаг, который можно попробовать.
@@ -269,7 +203,7 @@
           <article class="sample-report">
             <div class="sample-top">
               <span class="sample-badge">Пример разбора</span
-              ><span class="sample-mark" aria-hidden="true">✦</span>
+              ><span class="sample-mark" aria-hidden="true">М / 01</span>
             </div>
             <p class="sample-topic">Обо мне / Сильные стороны</p>
             <h3>Твоя опора —<br />умение видеть глубже.</h3>
@@ -308,10 +242,8 @@
       >
         <div class="section-heading">
           <div>
-            <p class="eyebrow">03 — От вопроса к пониманию</p>
-            <h2 id="how-title">
-              Меньше сложностей.<br /><em>Больше ясности.</em>
-            </h2>
+            <p class="eyebrow">Как это устроено</p>
+            <h2 id="how-title">Один вопрос.<br />Три шага.</h2>
           </div>
           <a class="text-link dark-link" href="/about"
             >Подробнее о методе <span aria-hidden="true">↗</span></a
@@ -343,7 +275,6 @@
           </li>
         </ol>
         <div class="method-note">
-          <span aria-hidden="true">✧</span>
           <p>
             <strong>Расчёт и интерпретация — разные вещи.</strong> Джйотиш,
             западная астрология и другие подходы дают разные способы посмотреть
@@ -358,8 +289,8 @@
       <section class="form-section" id="form" aria-labelledby="form-title">
         <div class="container form-layout">
           <div class="form-intro">
-            <p class="eyebrow">04 — Время для себя</p>
-            <h2 id="form-title">Начни со<br /><em>своего вопроса.</em></h2>
+            <p class="eyebrow">Твоя точка отсчёта</p>
+            <h2 id="form-title">Начни со<br />своего вопроса.</h2>
             <p>
               Здесь не нужно знать свой асцендент или разбираться в
               астрологических школах. Достаточно любопытства к себе.
@@ -536,7 +467,7 @@
       >
         <div>
           <p class="eyebrow">Прежде чем начать</p>
-          <h2 id="faq-title">Можно<br /><em>спросить.</em></h2>
+          <h2 id="faq-title">Можно<br />спросить.</h2>
         </div>
         <div class="faq-items">
           <details>
@@ -613,13 +544,13 @@
         <div class="footer-top">
           <a class="wordmark" href="/"
             ><img
-              src="/static/particles/mark.svg?v=20260914c"
+              src="/static/signal/mark.svg?v=20260914d"
               width="31"
               height="31"
               alt=""
-            />Матрица<span class="brand-dot">.</span></a
+            />Матрица</a
           >
-          <p>Ближе к себе.<br />В своём ритме.</p>
+          <p>Ты — точка<br />отсчёта.</p>
           <div>
             <a href="/about">Как это работает</a
             ><a href="https://t.me/jaotish_bot" target="_blank" rel="noopener"
