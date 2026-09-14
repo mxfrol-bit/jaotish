@@ -202,6 +202,7 @@ def build_synastry(
         calculation_modules={"person_a": modules_a, "person_b": modules_b, "synastry": syn},
         synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
         report={
+            "generation_status": ai.get("generation_status", "ready"),
             "short_summary": ai["short_summary"],
             "full_report": ai["full_report"],
             "action_plan": ai.get("action_plan", ""),
@@ -260,6 +261,7 @@ def build_event(
         calculation_modules=modules,
         synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
         report={
+            "generation_status": ai.get("generation_status", "ready"),
             "short_summary": ai["short_summary"],
             "full_report": ai["full_report"],
             "action_plan": ai.get("action_plan", ""),
@@ -307,6 +309,7 @@ def build_profile(req: ProfileRequest, today: date | None = None) -> Profile:
         calculation_modules=modules,
         synthesis={"engine": "ai", "model": config.OPENROUTER_MODEL if config.ai_ready() else None},
         report={
+            "generation_status": ai.get("generation_status", "ready"),
             "short_summary": ai["short_summary"],
             "full_report": ai["full_report"],
             "action_plan": ai.get("action_plan", ""),

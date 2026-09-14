@@ -11,6 +11,9 @@ import html
 import json as _json
 import re
 import uuid
+import time
+import threading
+from collections import OrderedDict
 from datetime import date
 from pathlib import Path
 
@@ -22,8 +25,8 @@ _LANDING_HTML = _LANDING_FILE.read_text(encoding="utf-8") if _LANDING_FILE.exist
 _DECK_FILE = Path(__file__).resolve().parents[1] / "deck.html"
 _DECK_HTML = _DECK_FILE.read_text(encoding="utf-8") if _DECK_FILE.exists() else ""
 
-from fastapi import APIRouter, BackgroundTasks, Form, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi import APIRouter, BackgroundTasks, Form, Query, Request
+from fastapi.responses import HTMLResponse, Response, JSONResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 
 from .. import config, database, tts, viz
@@ -463,7 +466,7 @@ th{color:var(--muted);font-weight:600;}
 
 
 _FONTS = (
-    "<link rel=icon href='/static/mark.svg' type='image/svg+xml'>"
+    "<link rel=icon href='/static/mark.svg?v=20260914b' type='image/svg+xml'>"
     "<link rel=preconnect href='https://fonts.googleapis.com'>"
     "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
     "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
@@ -522,7 +525,9 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{html.escape(title)}</title>{_FONTS}"
         f"<style>{_CSS}{_HERO_CSS}{_POLISH_CSS}</style>"
-        f"<link rel=stylesheet href='/static/pages.css?v=20260914a'>{head_extra}</head>"
+        f"<link rel=stylesheet href='/static/pages.css?v=20260914b'>"
+        f"<link rel=stylesheet href='/static/mystic.css?v=20260914b'>"
+        f"<script src='/static/reading.js?v=20260914b' defer></script>{head_extra}</head>"
         f"<body>{body}{_REVEAL_JS}</body></html>"
     )
 
@@ -531,7 +536,7 @@ def _nav() -> str:
     return (
         "<div class=wrap><div class=nav><a class=brand href='/'>Матрица<span>.</span></a>"
         "<div class=navlinks><a href='/compat'>Совместимость</a>"
-        "<a href='/event'>Выбор даты</a><a href='/example'>Пример разбора</a>"
+        "<a href='/event'>Выбор даты</a><a href='/history'>Мои разборы</a>"
         "<a href='/about'>Как это работает</a></div></div></div>"
     )
 
@@ -607,39 +612,19 @@ def _md_to_html(md: str) -> str:
 
 
 def _spinner_page(pid: str, title: str, lead: str) -> str:
-    """Экран ожидания = вау-фон: из точек собирается глобус-планета, статус без смайликов."""
-    import json as _json
-    # убираем эмодзи из статусов — оставляем чистый текст
-    clean = [re.sub(r"^[^0-9A-Za-zА-Яа-яЁё]+", "", m).strip() for m in LOADING_MESSAGES]
-    msgs = _json.dumps(clean, ensure_ascii=False)
-    css = (
-        "body{background:#143b3b;}"
-        "#sky{position:fixed;inset:0;width:100%;height:100%;cursor:crosshair;}"
-        ".lbrand{position:fixed;top:22px;left:24px;z-index:3;font-family:Fraunces,serif;"
-        "font-size:18px;color:#ece7d8;text-decoration:none;}"
-        ".loverlay{position:fixed;left:0;right:0;bottom:0;z-index:2;pointer-events:none;"
-        "padding:0 24px 13vh;text-align:center;}"
-        ".ltitle{font-family:Fraunces,serif;font-weight:500;font-size:clamp(24px,4.6vw,44px);"
-        "color:#ece7d8;margin:0 0 18px;letter-spacing:-.01em;}"
-        ".lstatus{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:#8f8f8a;"
-        "min-height:1.4em;transition:opacity .4s;}"
-        ".lhelp{font:12px/1.8 'Manrope',sans-serif;color:#bacbbb;max-width:380px;margin:20px auto 0;}"
-    )
-    body = (
-        "<canvas id=sky></canvas>"
-        "<a class=lbrand href='/'>Матрица</a>"
-        "<div class=loverlay><h1 class=ltitle>" + html.escape(title) + "</h1>"
-        "<div id=ld class=lstatus aria-live=polite></div>"
-        "<p class=lhelp>Это может занять несколько минут. Страница обновится автоматически, когда разбор будет готов.</p></div>"
-        "<script>" + _STAGE_JS + "</script>"
-        "<script>(function(){var M=" + msgs + ",i=Math.floor(Math.random()*M.length),"
-        "e=document.getElementById('ld');function t(){e.style.opacity=0;"
-        "setTimeout(function(){e.textContent=M[i%M.length];i++;e.style.opacity=1;},260);}"
-        "t();setInterval(t,1900);})();</script>"
-    )
-    # globe успевает собраться до перезагрузки, которая опрашивает результат.
-    head = "<meta http-equiv='refresh' content='8;url=/r/" + pid + "'><style>" + css + "</style>"
-    return _page("Считаю…", body, head)
+    safe_pid = html.escape(pid, quote=True)
+    started = _job_started.get(pid, time.time())
+    body = f"""{_nav()}<main class=waiting-main data-job-id='{safe_pid}' data-started='{started}'>
+      <div class=waiting-inner><div class=waiting-orb aria-hidden=true></div>
+      <div class=waiting-eyebrow>Твоя карта становится историей</div>
+      <h1>Собираем твой разбор</h1>
+      <p id=waiting-status role=status>Рассчитываем карту и составляем персональный текст.</p>
+      <p>Обычно это занимает несколько минут. Можно оставить страницу открытой — готовый разбор появится автоматически.</p>
+      <div class=waiting-time id=waiting-time>Ожидание ответа…</div>
+      <div class=waiting-actions><a href='/history'>Мои разборы</a><a href='/'>На главную</a></div>
+      </div></main>"""
+    head = f"<noscript><meta http-equiv=refresh content='15;url=/r/{safe_pid}'></noscript>"
+    return _page("Твой разбор готовится · Матрица", body, head)
 
 
 # ---------------- лендинг: чёрно-белый нуар на частицах ----------------
@@ -759,9 +744,12 @@ _STAGE_JS = r"""
 
 
 @router.get("/", response_class=HTMLResponse)
-def landing() -> str:
+def landing(request: Request) -> str:
     # Семантический HTML без сборки; форма отправляется на /report.
     if _LANDING_HTML:
+        if request.url.hostname in {"127.0.0.1", "localhost", "::1"} and not config.ai_ready():
+            banner = "<div class=local-preview-banner>Локальное превью: AI здесь не подключён. <a href='https://web-production-b18f0.up.railway.app/'>Открыть рабочий сайт с разбором ↗</a></div>"
+            return _LANDING_HTML.replace("<body>", "<body>" + banner)
         return _LANDING_HTML
     return _page("Матрица", f"{_nav()}<div class=wrap><div class=hero><h1>Матрица</h1>"
                  "<a class=cta href='/proof'>Узнать больше</a></div></div>")
@@ -789,7 +777,7 @@ def about() -> str:
       </div>
       <section class=sec><h2>Где здесь нейросеть</h2><p>Расчёт выполняет программа. Нейросеть получает доступные результаты и составляет текст по выбранному вопросу. Если данных для системы не хватает, она не должна выдавать её показатели за рассчитанные.</p><p>Даже при одинаковых исходных данных формулировки текста могут различаться. Расчёт при тех же параметрах остаётся воспроизводимым.</p></section>
       <section class=sec><h2>Что означает точность</h2><p>Точность положения планет не доказывает точность выводов о личности или будущем. Астрологическая интерпретация не является научно подтверждённой диагностикой и не гарантирует события. Сравнивай текст со своим опытом: с ним можно не соглашаться.</p><a class=inline-link href='/proof'>Посмотреть, как рассчитываются положения планет →</a></section>
-      <section class=sec id=data><h2>Как используются твои данные</h2><p>Имя, пол, дата, время и город рождения, если они указаны, поступают на сервер для расчёта. Имя и пол нужны для обращения, а выбранная тема и вопрос — для содержания.</p><p>Данные профиля и результаты расчёта передаются через OpenRouter модели, которая составляет текст. Профиль и готовый разбор сохраняются в серверной базе Supabase.</p><p>Готовый результат открывается по индивидуальной ссылке без входа в аккаунт. Любой, у кого есть эта ссылка, сможет прочитать разбор. Передавай её только тем, с кем хочешь им поделиться.</p><p>Форма на этой странице не сохраняет дату и время рождения в локальном хранилище браузера. Для исправления данных создай новый разбор.</p></section>
+      <section class=sec id=data><h2>Как используются твои данные</h2><p>Имя, пол, дата, время и город рождения, если они указаны, поступают на сервер для расчёта. Имя и пол нужны для обращения, а выбранная тема и вопрос — для содержания.</p><p>Данные профиля и результаты расчёта передаются через OpenRouter модели, которая составляет текст. Профиль и готовый разбор сохраняются в серверной базе Supabase.</p><p>Готовый результат открывается по индивидуальной ссылке без входа в аккаунт. Любой, у кого есть эта ссылка, сможет прочитать разбор. Передавай её только тем, с кем хочешь им поделиться.</p><p>В разделе «Мои разборы» хранятся только ссылки и названия, которые ты сохранишь на этом устройстве. Дата, время и город рождения туда не записываются. Для исправления исходных данных создай новый разбор. Уточняющий вопрос передаётся той же модели вместе с текстом готового разбора; ответ показывается на странице.</p></section>
       <p class=foot><a class=cta href='/#form'>Перейти к своему вопросу ↗</a></p>
     </main>"""
     return _page("Как это работает · Матрица", body)
@@ -817,12 +805,170 @@ def example() -> str:
     return _page("Пример разбора · Матрица", body)
 
 
+_PUBLIC_SITE = "https://web-production-b18f0.up.railway.app"
+_job_started: dict[str, float] = {}
+_job_requests: dict[str, ProfileRequest] = {}
+_retry_targets: dict[str, str] = {}
+_jobs_lock = threading.RLock()
+_clarify_busy: set[str] = set()
+_clarify_times: OrderedDict[str, list[float]] = OrderedDict()
+
+
+def _register_job(pid: str, req: ProfileRequest | None = None) -> None:
+    # Bound in-process bookkeeping; completed profiles live in the existing database.
+    with _jobs_lock:
+        while len(_job_started) >= 512:
+            oldest = next(iter(_job_started))
+            _job_started.pop(oldest, None)
+            _job_requests.pop(oldest, None)
+            _web_status.pop(oldest, None)
+            _retry_targets.pop(oldest, None)
+        _job_started[pid] = time.time()
+        _web_status[pid] = "pending"
+        if req is not None:
+            _job_requests[pid] = req
+
+
+def _provider_unavailable() -> HTMLResponse:
+    body = f"{_nav()}<main class=wrap><div class=error-panel><h1>На этой версии разбор недоступен</h1><p>Здесь не подключён сервис интерпретации. Мы не будем выдавать расчётные данные за готовый персональный текст.</p><a class=cta href='{_PUBLIC_SITE}/#form'>Открыть рабочий сайт ↗</a></div></main>"
+    return HTMLResponse(_page("Разбор недоступен · Матрица", body), status_code=503)
+
+
+def _report_ready(data: dict) -> bool:
+    report = data.get("report") or {}
+    status = report.get("generation_status")
+    if status is not None:
+        return status == "ready" and bool(report.get("full_report"))
+    text = (report.get("short_summary", "") + "\n" + report.get("full_report", ""))
+    legacy_errors = ("OPENROUTER_API_KEY", "AI-портрет не собрался", "AI-синтез временно недоступен", "Отчёт недоступен")
+    return bool(report.get("full_report")) and not any(marker in text for marker in legacy_errors)
+
+
+def _failed_page(pid: str, data: dict | None = None) -> HTMLResponse:
+    safe_pid = html.escape(pid, quote=True)
+    atype = ((data or {}).get("user_input") or {}).get("analysis_type", "personality")
+    can_retry = pid in _job_requests or (data and atype in _GENERAL_QUESTION)
+    action = f"<form method=post action='/r/{safe_pid}/retry'><button type=submit>Повторить с теми же данными</button></form>" if can_retry else "<a class=cta href='/#form'>Вернуться к анкете</a>"
+    body = f"{_nav()}<main class=wrap><div class=error-panel><h1>Разбор не удалось завершить</h1><p>Сервис не вернул полный текст. Это не готовый разбор; повторная попытка запустит составление заново.</p><div class=error-actions>{action}<a class=btnlink href='/history'>Мои разборы</a></div></div></main>"
+    return HTMLResponse(_page("Разбор не завершён · Матрица", body), status_code=503)
+
+
+@router.get("/r/{pid}/status")
+def reading_status(pid: str) -> Response:
+    data = database.get_profile(pid)
+    if data is not None:
+        state = "ready" if _report_ready(data) else "failed"
+    elif _web_status.get(pid) == "pending":
+        state = "processing"
+    elif _web_status.get(pid, "").startswith("error:"):
+        state = "failed"
+    else:
+        return JSONResponse({"status": "not_found"}, status_code=404, headers={"Cache-Control": "no-store"})
+    return JSONResponse({"status": state}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/r/{pid}/retry")
+def retry_reading(pid: str, background_tasks: BackgroundTasks) -> Response:
+    if not config.ai_ready():
+        return _provider_unavailable()
+    if pid in _retry_targets:
+        return RedirectResponse(f"/r/{_retry_targets[pid]}", status_code=303)
+    data = database.get_profile(pid)
+    if data and _report_ready(data):
+        return RedirectResponse(f"/r/{pid}", status_code=303)
+    if _web_status.get(pid) == "pending":
+        return RedirectResponse(f"/r/{pid}", status_code=303)
+    req = _job_requests.get(pid)
+    if req is None and data:
+        try:
+            req = ProfileRequest.model_validate(data.get("user_input") or {})
+        except ValueError:
+            req = None
+    if req is None or req.analysis_type.value not in _GENERAL_QUESTION:
+        return RedirectResponse('/#form', status_code=303)
+    # Database reads run in parallel worker threads. Recheck inside the lock so
+    # two clicks cannot schedule two paid generations for the same failed job.
+    with _jobs_lock:
+        if pid in _retry_targets:
+            return RedirectResponse(f"/r/{_retry_targets[pid]}", status_code=303)
+        new_pid = uuid.uuid4().hex
+        _register_job(new_pid, req)
+        while len(_retry_targets) >= 512:
+            _retry_targets.pop(next(iter(_retry_targets)))
+        _retry_targets[pid] = new_pid
+    background_tasks.add_task(_build_and_save, new_pid, req, "web/retry")
+    return RedirectResponse(f"/r/{new_pid}", status_code=303)
+
+
+@router.get("/history", response_class=HTMLResponse)
+def reading_history() -> str:
+    body = f"""{_nav()}{_hero('Твои сохранённые разборы', 'Моё пространство', 'Истории, к которым хочется вернуться.')}
+    <main class=wrap><div id=history-list class=history-list></div><div id=history-empty class=history-empty><h2>Здесь появятся твои разборы</h2><p>В готовом результате нажми «Сохранить в мои разборы», чтобы вернуться к нему позже.</p><a class=cta href='/#form'>Начать свой разбор ↗</a></div><p class=history-note>Список хранится в этом браузере на этом устройстве. Это сохранённые ссылки, без синхронизации с другим телефоном или компьютером. Убирая запись из списка, ты не удаляешь сам разбор с сервера.</p><noscript><p>Для списка сохранённых ссылок нужен JavaScript.</p></noscript><p class=foot><a href='/about#data'>Как используются данные</a></p></main>"""
+    return _page("Мои разборы · Матрица", body)
+
+
+def _reading_tools(pid: str, title: str) -> str:
+    meta = _json.dumps({"id": pid, "title": html.unescape(title)}, ensure_ascii=False).replace("<", "\\u003c")
+    return f"""<div class=report-status-line>Разбор готов · ссылка ведёт к сохранённому результату</div>
+    <script id=reading-meta type='application/json'>{meta}</script>
+    <div class=report-tools><button type=button id=remember-reading>Сохранить в мои разборы</button><button type=button id=print-reading>Сохранить PDF</button><a class=btnlink href='/r/{html.escape(pid, quote=True)}/download'>Скачать текст</a><button type=button id=copy-reading>Копировать ссылку</button><span class=tool-status id=tool-status role=status></span></div>"""
+
+
+def _followup_form(pid: str) -> str:
+    return f"""<section class=followup-card><h2>Хочется понять глубже?</h2><p>Задай один вопрос по этому разбору или попроси объяснить проще.</p><div class=followup-presets><button type=button data-followup='Объясни главную мысль моего разбора проще, на одном жизненном примере.'>Объяснить проще</button><button type=button data-followup='Как применить главную мысль этого разбора в обычной жизни? Дай один небольшой шаг.'>Как применить</button><button type=button data-followup='Какие вопросы мне стоит задать себе, чтобы проверить, откликается ли этот разбор?'>Вопросы к себе</button></div><form id=followup-form data-reading-id='{html.escape(pid, quote=True)}'><label for=followup-question>Твой вопрос</label><textarea id=followup-question name=question maxlength=500 required placeholder='Что это значит в моей ситуации?'></textarea><button type=submit>Задать вопрос</button><p id=followup-status role=status class=followup-note></p></form><div class=followup-answer id=followup-answer></div><p class=followup-note>Уточнение опирается на готовый текст. Для другой темы создай отдельный разбор. Ответ на уточнение не сохраняется при обновлении страницы.</p></section>"""
+
+
+@router.get("/r/{pid}/download")
+def download_reading(pid: str) -> Response:
+    data = database.get_profile(pid)
+    if not data or not _report_ready(data):
+        return Response(status_code=404)
+    ui = data.get("user_input") or {}
+    title = f"{ui.get('name') or 'Твой разбор'} · {_ANALYSIS_LABELS.get(ui.get('analysis_type'), 'Матрица')}"
+    text = title + "\n\n" + data["report"]["full_report"] + "\n\nМатрица · Интерпретация для размышления."
+    return Response(text, media_type="text/plain; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="matrica-reading.txt"', "Cache-Control": "no-store"})
+
+
+@router.post("/r/{pid}/clarify")
+async def clarify_reading(pid: str, request: Request, question: str = Form(..., min_length=3, max_length=500)) -> Response:
+    if request.headers.get("x-matrix-action") != "clarify":
+        return JSONResponse({"error": "Отправь вопрос из формы под разбором."}, status_code=403)
+    data = await run_in_threadpool(database.get_profile, pid)
+    if not data or not _report_ready(data):
+        return JSONResponse({"error": "Сначала дождись готового разбора."}, status_code=404)
+    if not config.ai_ready():
+        return JSONResponse({"error": "Сервис интерпретации сейчас недоступен."}, status_code=503)
+    question = question.strip()
+    if len(question) < 3:
+        return JSONResponse({"error": "Напиши вопрос из нескольких слов."}, status_code=422)
+    now = time.monotonic()
+    recent = [t for t in _clarify_times.get(pid, []) if now - t < 600]
+    if pid in _clarify_busy or len(_clarify_busy) >= 3 or len(recent) >= 3:
+        return JSONResponse({"error": "Подожди завершения ответа или вернись к уточнениям чуть позже."}, status_code=429)
+    _clarify_times[pid] = recent + [now]
+    _clarify_times.move_to_end(pid)
+    while len(_clarify_times) > 512:
+        _clarify_times.popitem(last=False)
+    _clarify_busy.add(pid)
+    try:
+        answer = await run_in_threadpool(synthesis.clarify, data["report"]["full_report"], question, (data.get("user_input") or {}).get("gender", ""))
+    except Exception as exc:
+        await run_in_threadpool(database.log_error, "exception", "web/clarify", type(exc).__name__)
+        answer = None
+    finally:
+        _clarify_busy.discard(pid)
+    if not answer:
+        return JSONResponse({"error": "Не удалось получить полный ответ. Твой исходный разбор сохранён; попробуй позже."}, status_code=502)
+    return JSONResponse({"answer": answer}, headers={"Cache-Control": "no-store"})
+
+
 # ---------------- основной разбор ----------------
 def _build_and_save(pid: str, req: ProfileRequest, where: str) -> None:
     try:
         profile = build_profile(req)
         profile.profile_id = pid
         database.save_profile(profile.model_dump(mode="json"))
+        _web_status.pop(pid, None)
     except Exception as e:  # noqa: BLE001
         _web_status[pid] = f"error:{type(e).__name__}: {e}"
         database.log_error("exception", where, f"{type(e).__name__}: {e}")
@@ -845,6 +991,8 @@ def report(
     analysis_type: str = Form("personality"),
     main_request: str = Form("", max_length=300),
 ) -> str:
+    if not config.ai_ready():
+        return _provider_unavailable()
     bd = _parse_date(birth_date)
     if not bd or not date(1900, 1, 1) <= bd <= date.today():
         return _form_error("Укажи существующую дату рождения от 01.01.1900 до сегодняшнего дня в формате ДД.ММ.ГГГГ.")
@@ -877,9 +1025,9 @@ def report(
         main_request=main_request.strip() or _GENERAL_QUESTION.get(atype.value, ""), analysis_type=atype,
     )
     pid = uuid.uuid4().hex
+    _register_job(pid, req)
     background_tasks.add_task(_build_and_save, pid, req, "web/report")
-    return _spinner_page(pid, "Собираю разбор…",
-                         "Считаю параметры момента рождения и перевожу их в понятный текст. До минуты.")
+    return RedirectResponse(f"/r/{pid}", status_code=303)
 
 
 # ---------------- совместимость ----------------
@@ -928,6 +1076,7 @@ def _build_synastry_and_save(pid: str, a: ProfileRequest, b: ProfileRequest) -> 
         profile = build_synastry(a, b)
         profile.profile_id = pid
         database.save_profile(profile.model_dump(mode="json"))
+        _web_status.pop(pid, None)
     except Exception as e:  # noqa: BLE001
         _web_status[pid] = f"error:{type(e).__name__}: {e}"
         database.log_error("exception", "web/compat", f"{type(e).__name__}: {e}")
@@ -939,6 +1088,8 @@ def compat_run(
     name_a: str = Form(""), gender_a: str = Form(""), date_a: str = Form(...), time_a: str = Form(""), place_a: str = Form(""),
     name_b: str = Form(""), date_b: str = Form(...), time_b: str = Form(""), place_b: str = Form(""),
 ) -> str:
+    if not config.ai_ready():
+        return _provider_unavailable()
     bda, bdb = _parse_date(date_a), _parse_date(date_b)
     if not bda or not bdb:
         return _page("Ошибка", f"{_nav()}<div class=wrap><h1>Неверная дата</h1><a href='/compat'>← назад</a></div>")
@@ -947,9 +1098,9 @@ def compat_run(
     b = ProfileRequest(name=name_b.strip(), birth_date=bdb, birth_time=(time_b.strip() or None),
                        birth_place=(place_b.strip() or None), analysis_type=AnalysisType.compatibility)
     pid = uuid.uuid4().hex
+    _register_job(pid)
     background_tasks.add_task(_build_synastry_and_save, pid, a, b)
-    return _spinner_page(pid, "Собираю ваш разбор…",
-                         "Смотрю, где вы усиливаете друг друга и где задеваете. До минуты.")
+    return RedirectResponse(f"/r/{pid}", status_code=303)
 
 
 # ---------------- сделка / событие ----------------
@@ -994,6 +1145,7 @@ def _build_event_and_save(pid: str, req: ProfileRequest, ev: date, desc: str) ->
         profile = build_event(req, ev, desc)
         profile.profile_id = pid
         database.save_profile(profile.model_dump(mode="json"))
+        _web_status.pop(pid, None)
     except Exception as e:  # noqa: BLE001
         _web_status[pid] = f"error:{type(e).__name__}: {e}"
         database.log_error("exception", "web/event", f"{type(e).__name__}: {e}")
@@ -1005,6 +1157,8 @@ def event_run(
     name: str = Form(""), gender: str = Form(""), birth_date: str = Form(...), birth_time: str = Form(""),
     birth_place: str = Form(""), event_date: str = Form(...), event_desc: str = Form(""),
 ) -> str:
+    if not config.ai_ready():
+        return _provider_unavailable()
     bd, ev = _parse_date(birth_date), _parse_date(event_date)
     if not bd or not ev:
         return _page("Ошибка", f"{_nav()}<div class=wrap><h1>Неверная дата</h1><a href='/event'>← назад</a></div>")
@@ -1012,9 +1166,9 @@ def event_run(
                          birth_place=(birth_place.strip() or None), main_request=event_desc.strip(),
                          analysis_type=AnalysisType.event)
     pid = uuid.uuid4().hex
+    _register_job(pid)
     background_tasks.add_task(_build_event_and_save, pid, req, ev, event_desc.strip())
-    return _spinner_page(pid, "Оцениваю дату…",
-                         "Смотрю, что эта дата включает у тебя, и собираю вывод. До минуты.")
+    return RedirectResponse(f"/r/{pid}", status_code=303)
 
 
 # ---------------- результат ----------------
@@ -1194,13 +1348,14 @@ def dashboard(pid: str) -> str:
 def result(pid: str) -> str:
     data = database.get_profile(pid)
     if data is None:
-        st = _web_status.get(pid, "")
-        if st.startswith("error:"):
-            _web_status.pop(pid, None)
-            return _page("Ошибка", f"{_nav()}<div class=wrap><div class=hero><h1>Не получилось собрать разбор</h1>"
-                         f"<p class=note>{html.escape(st[6:][:160])}</p><a class=cta href='/'>← попробовать снова</a>"
-                         "</div></div>")
-        return _spinner_page(pid, "Ещё считаю…", "Почти готово — страница обновится сама.")
+        state = _web_status.get(pid, "")
+        if state.startswith("error:"):
+            return _failed_page(pid)
+        if state == "pending":
+            return _spinner_page(pid, "Собираем разбор", "")
+        return HTMLResponse(_page("Разбор не найден · Матрица", f"{_nav()}<main class=wrap><div class=error-panel><h1>Не нашли этот разбор</h1><p>Ссылка могла относиться к локальному превью или к незавершённому разбору. Открой сохранённый результат или создай новый.</p><div class=error-actions><a class=cta href='/#form'>Начать разбор</a><a class=btnlink href='/history'>Мои разборы</a></div></div></main>"), status_code=404)
+    if not _report_ready(data):
+        return _failed_page(pid, data)
 
     ui = data.get("user_input") or {}
     rep = data.get("report") or {}
@@ -1224,6 +1379,7 @@ def result(pid: str) -> str:
     <main class="wrap report-main">
       {f'<section class=sec><h2>Коротко</h2>{summary}</section>' if summary else ''}
       {f'<div class=cred>{html.escape(basis)}</div>' if basis else ''}
+      {_reading_tools(pid, title)}
       <div class=actions>
         <a class=btnlink href='/profile/{pid}'>Моя карта в цифрах</a>
         <a class=btnlink href='/voice/{pid}.mp3'>Слушать разбор</a>
@@ -1233,6 +1389,7 @@ def result(pid: str) -> str:
       <h2 class=more>Подробная расшифровка</h2>
       {toc_html}
       {cards}
+      {_followup_form(pid)}
       <h2 class=more>Карта и расчёт</h2>{_natal_block(data, pid)}<details><summary>Положения планет</summary>{positions}</details>
       {advanced}
       <p class=foot>Это интерпретация, а не вывод о тебе: если что-то не откликается — так бывает. Важные решения о здоровье, деньгах и отношениях остаются за тобой.</p>

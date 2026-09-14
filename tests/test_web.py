@@ -16,6 +16,9 @@ from app.routers import web
 class ReadingFormTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        configured = patch.object(web.config, 'ai_ready', return_value=True)
+        configured.start()
+        self.addCleanup(configured.stop)
         self.payload = dict(name='Тест', gender='ж', birth_date='15.05.1990',
                             birth_time='14:30', time_precision='exact',
                             birth_place='', analysis_type='personality')
