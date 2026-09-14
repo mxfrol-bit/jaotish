@@ -1,3 +1,5 @@
+import { formatBirthDateInput } from "./form-utils.mjs?v=20260914e";
+
 /* Progressive enhancement: real POST form also works without JavaScript. */
 (() => {
   "use strict";
@@ -5,6 +7,10 @@
   if (!form) return;
   const topic = document.getElementById("analysis-type");
   const question = document.getElementById("question");
+  const customQuestion = document.getElementById("custom-question");
+  const customField = document.getElementById("custom-question-field");
+  const customCount = document.getElementById("question-count");
+  const customValue = "__custom__";
   const fields = document.getElementById("form-fields");
   const review = document.getElementById("form-review");
   const birthDate = document.getElementById("birth-date");
@@ -33,18 +39,51 @@
   };
   let reviewing = false;
   let submitting = false;
-  function updateQuestions() {
+  function syncQuestion(focus = false) {
+    const custom = question.value === customValue;
+    customField.hidden = !custom;
+    customQuestion.disabled = !custom;
+    customQuestion.required = custom;
+    if (custom) question.removeAttribute("name");
+    else question.name = "main_request";
+    customQuestion.setCustomValidity("");
+    if (custom && focus) customQuestion.focus({ preventScroll: true });
+  }
+  function updateQuestions(preserve = false) {
+    const previous = question.value;
     question.replaceChildren(new Option("Общий разбор темы", ""));
     (questions[topic.value] || questions.personality).forEach((text) =>
       question.add(new Option(text, text)),
     );
+    question.add(new Option("Сформулировать свой вопрос…", customValue));
+    if (
+      previous === customValue ||
+      (preserve && [...question.options].some((o) => o.value === previous))
+    )
+      question.value = previous;
+    syncQuestion();
   }
-  topic.addEventListener("change", updateQuestions);
+  function announceTopic() {
+    document.dispatchEvent(
+      new CustomEvent("matrica:topic", { detail: topic.value }),
+    );
+  }
+  topic.addEventListener("change", () => {
+    updateQuestions();
+    announceTopic();
+  });
+  question.addEventListener("change", () => syncQuestion(true));
+  customQuestion.addEventListener("input", () => {
+    customCount.textContent = `${customQuestion.value.length} / 300`;
+    customQuestion.setCustomValidity("");
+  });
+  updateQuestions(true);
   document.querySelectorAll("[data-topic]").forEach((link) => {
     link.addEventListener("click", () => {
       if (reviewing) edit();
       topic.value = link.dataset.topic;
       updateQuestions();
+      announceTopic();
     });
   });
   function precision() {
@@ -88,7 +127,18 @@
         : "Укажи существующую дату от 01.01.1900 до сегодняшнего дня в формате ДД.ММ.ГГГГ.",
     );
   }
-  birthDate.addEventListener("input", () => birthDate.setCustomValidity(""));
+  birthDate.addEventListener("input", (event) => {
+    birthDate.setCustomValidity("");
+    if (event.isComposing) return;
+    const formatted = formatBirthDateInput(
+      birthDate.value,
+      birthDate.selectionStart ?? birthDate.value.length,
+    );
+    if (formatted.text !== birthDate.value) {
+      birthDate.value = formatted.text;
+      birthDate.setSelectionRange(formatted.caret, formatted.caret);
+    }
+  });
   birthDate.addEventListener("blur", validateDate);
   function setProgress(second) {
     document.getElementById("step-one").classList.toggle("current", !second);
@@ -111,11 +161,19 @@
     if (!reviewing) {
       event.preventDefault();
       validateDate();
+      if (!customQuestion.disabled && !customQuestion.value.trim())
+        customQuestion.setCustomValidity(
+          "Напиши вопрос, который хочется разобрать.",
+        );
       if (!form.reportValidity()) return;
       const values = new FormData(form);
       const data = [
         ["Тема", topic.selectedOptions[0].textContent],
-        ["Вопрос", question.selectedOptions[0].textContent],
+        [
+          "Вопрос",
+          values.get("main_request")?.trim() ||
+            question.selectedOptions[0].textContent,
+        ],
         ["Имя", values.get("name").trim()],
         ["Пол", values.get("gender") === "ж" ? "Женщина" : "Мужчина"],
         ["Дата рождения", values.get("birth_date")],
@@ -156,6 +214,8 @@
   // A browser may restore the disabled submit button when returning from a report.
   window.addEventListener("pageshow", (event) => {
     if (!event.persisted) return;
+    syncQuestion();
+    announceTopic();
     submitting = false;
     const button = document.getElementById("confirm-button");
     button.disabled = false;

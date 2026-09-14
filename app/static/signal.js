@@ -1,4 +1,4 @@
-import { makeSignal } from "./signal-geometry.mjs?v=20260914d";
+import { makeSignal } from "./signal-geometry.mjs?v=20260914e";
 
 const experience = document.getElementById("experience");
 const stage = document.querySelector(".signal-stage");
@@ -32,25 +32,49 @@ const copy = [
 ];
 let selected = 0;
 let requestDraw = () => {};
-document.querySelectorAll("[data-signal-topic]").forEach((button) => {
-  button.addEventListener("click", () => {
-    selected = Number(button.dataset.signalTopic);
-    document.querySelectorAll("[data-signal-topic]").forEach((item) => {
-      const on = item === button;
-      item.classList.toggle("is-active", on);
-      item.setAttribute("aria-pressed", String(on));
-    });
-    const [topic, description, label] = copy[selected];
-    document.getElementById("topic-description").textContent = description;
-    topicStart.dataset.topic = topic;
-    topicStart.replaceChildren(document.createTextNode(label + " "));
-    const arrow = document.createElement("span");
-    arrow.setAttribute("aria-hidden", "true");
-    arrow.textContent = "↗";
-    topicStart.append(arrow);
-    requestDraw();
+const topicButtons = [...document.querySelectorAll("[data-signal-topic]")];
+function selectTopic(index) {
+  if (!copy[index]) return;
+  selected = index;
+  topicButtons.forEach((item, i) => {
+    const on = i === selected;
+    item.classList.toggle("is-active", on);
+    item.setAttribute("aria-pressed", String(on));
+  });
+  const [topic, description, label] = copy[selected];
+  document.getElementById("topic-description").textContent = description;
+  topicStart.dataset.topic = topic;
+  const arrow = document.createElement("span");
+  arrow.setAttribute("aria-hidden", "true");
+  arrow.textContent = "↗";
+  topicStart.replaceChildren(document.createTextNode(label + " "), arrow);
+  requestDraw();
+}
+topicButtons.forEach((button, index) => {
+  button.addEventListener("click", () => selectTopic(index));
+  button.addEventListener("keydown", (event) => {
+    const offsets = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
+    let next;
+    if (event.key in offsets)
+      next =
+        (index + offsets[event.key] + topicButtons.length) %
+        topicButtons.length;
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = topicButtons.length - 1;
+    if (next === undefined) return;
+    event.preventDefault();
+    topicButtons[next].focus();
+    selectTopic(next);
   });
 });
+document.addEventListener("matrica:topic", (event) =>
+  selectTopic(copy.findIndex((item) => item[0] === event.detail)),
+);
+selectTopic(
+  copy.findIndex(
+    (item) => item[0] === document.getElementById("analysis-type").value,
+  ),
+);
 
 // Reveal only after the observer is ready, so a failed enhancement cannot hide content.
 if ("IntersectionObserver" in window && !reduce.matches) {
@@ -79,6 +103,8 @@ function initSurface() {
   const gl = canvas.getContext("webgl", {
     alpha: true,
     antialias: false,
+    // Keep a stopped frame visible across compositing and page snapshots.
+    preserveDrawingBuffer: true,
     powerPreference: "low-power",
   });
   if (!gl) return;
@@ -144,52 +170,60 @@ function initSurface() {
     }
     return shader;
   }
-  let program, vs, fs;
-  try {
-    vs = compile(gl.VERTEX_SHADER, vertex);
-    fs = compile(gl.FRAGMENT_SHADER, fragment);
-    program = gl.createProgram();
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS))
-      throw new Error("Surface program unavailable");
-  } catch {
-    return;
-  }
-  gl.deleteShader(vs);
-  gl.deleteShader(fs);
-  gl.useProgram(program);
   const data = makeSignal(96, narrow.matches ? 120 : 220);
-  const buffers = [];
-  function bind(name, array, components) {
-    const buffer = gl.createBuffer();
-    buffers.push(buffer);
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, array, gl.STATIC_DRAW);
-    const location = gl.getAttribLocation(program, name);
-    gl.enableVertexAttribArray(location);
-    gl.vertexAttribPointer(location, components, gl.FLOAT, false, 0, 0);
-  }
-  data.forms.forEach((form, i) => bind("a" + i, form, 3));
-  bind("grain", data.grain, 2);
   const uniforms = {};
-  for (const name of [
-    "weights",
-    "size",
-    "pointer",
-    "tilt",
-    "time",
-    "scroll",
-    "energy",
-    "ratio",
-    "small",
-    "moving",
-  ])
-    uniforms[name] = gl.getUniformLocation(program, name);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-  gl.disable(gl.DEPTH_TEST);
+  let program;
+  function setupGraphics() {
+    let vs, fs;
+    const buffers = [];
+    try {
+      vs = compile(gl.VERTEX_SHADER, vertex);
+      fs = compile(gl.FRAGMENT_SHADER, fragment);
+      program = gl.createProgram();
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+        throw new Error("Surface program unavailable");
+      gl.useProgram(program);
+      function bind(name, array, components) {
+        const buffer = gl.createBuffer();
+        buffers.push(buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, array, gl.STATIC_DRAW);
+        const location = gl.getAttribLocation(program, name);
+        gl.enableVertexAttribArray(location);
+        gl.vertexAttribPointer(location, components, gl.FLOAT, false, 0, 0);
+      }
+      data.forms.forEach((form, i) => bind("a" + i, form, 3));
+      bind("grain", data.grain, 2);
+      for (const name of [
+        "weights",
+        "size",
+        "pointer",
+        "tilt",
+        "time",
+        "scroll",
+        "energy",
+        "ratio",
+        "small",
+        "moving",
+      ])
+        uniforms[name] = gl.getUniformLocation(program, name);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.disable(gl.DEPTH_TEST);
+      return true;
+    } catch {
+      buffers.forEach((buffer) => gl.deleteBuffer(buffer));
+      if (program) gl.deleteProgram(program);
+      return false;
+    } finally {
+      if (vs) gl.deleteShader(vs);
+      if (fs) gl.deleteShader(fs);
+    }
+  }
+  if (!setupGraphics()) return;
   let width = 0,
     height = 0,
     dpr = 1,
@@ -203,6 +237,10 @@ function initSurface() {
     progress = 0;
   let lost = false,
     ready = false;
+  let lastTarget = 0;
+  try {
+    paused = localStorage.getItem("matrica-motion-paused") === "true";
+  } catch {}
   const weights = new Float32Array([1, 0, 0, 0]);
   let mouseX = -10000,
     mouseY = -10000,
@@ -211,6 +249,7 @@ function initSurface() {
     targetX = 0,
     targetY = 0;
   function resize() {
+    if (lost) return;
     const r = stage.getBoundingClientRect();
     width = r.width;
     height = r.height;
@@ -231,14 +270,23 @@ function initSurface() {
     last = now;
     if (moving) clock += dt;
     const top = experience.getBoundingClientRect().top;
-    progress = Math.max(0, Math.min(1, (-top + height * 0.3) / height));
-    const target = progress > 0.68 ? selected : 0;
-    const smoothing = moving ? 1 - Math.exp(-dt * 6) : 1;
+    const nextProgress = Math.max(
+      0,
+      Math.min(1, (-top + height * 0.3) / height),
+    );
+    if (moving || !ready) progress = nextProgress;
+    const target = nextProgress > 0.68 ? selected : 0;
+    const smoothing = moving
+      ? 1 - Math.exp(-dt * 6)
+      : target !== lastTarget || reduce.matches
+        ? 1
+        : 0;
+    lastTarget = target;
     for (let i = 0; i < 4; i++)
       weights[i] += ((i === target ? 1 : 0) - weights[i]) * smoothing;
     const delta = Math.abs(scrollY - lastScroll);
     lastScroll = scrollY;
-    scrollEnergy += (Math.min(1, delta / 50) - scrollEnergy) * 0.14;
+    if (moving) scrollEnergy += (Math.min(1, delta / 50) - scrollEnergy) * 0.14;
     tiltX += (targetX - tiltX) * smoothing;
     tiltY += (targetY - tiltY) * smoothing;
     gl.clearColor(0, 0, 0, 0);
@@ -249,10 +297,10 @@ function initSurface() {
     gl.uniform2f(uniforms.tilt, tiltX, tiltY);
     gl.uniform1f(uniforms.time, clock);
     gl.uniform1f(uniforms.scroll, reduce.matches ? 0 : progress);
-    gl.uniform1f(uniforms.energy, moving ? scrollEnergy : 0);
+    gl.uniform1f(uniforms.energy, reduce.matches ? 0 : scrollEnergy);
     gl.uniform1f(uniforms.ratio, dpr);
     gl.uniform1f(uniforms.small, narrow.matches ? 1 : 0);
-    gl.uniform1f(uniforms.moving, moving ? 1 : 0);
+    gl.uniform1f(uniforms.moving, reduce.matches ? 0 : 1);
     gl.drawArrays(gl.POINTS, 0, data.count);
     if (!ready) {
       ready = true;
@@ -271,6 +319,18 @@ function initSurface() {
     last = 0;
     if (visible) requestDraw();
     pause.hidden = reduce.matches || lost;
+    pause.setAttribute("aria-pressed", String(paused));
+    pause.textContent = paused
+      ? "Продолжить движение ▷"
+      : "Остановить движение Ⅱ";
+    stage.dataset.motion = reduce.matches
+      ? "reduced"
+      : paused
+        ? "paused"
+        : visible && !document.hidden
+          ? "running"
+          : "idle";
+    updateHint();
   }
   const observer = new IntersectionObserver(
     (entries) => {
@@ -282,21 +342,31 @@ function initSurface() {
   observer.observe(experience);
   const ro = new ResizeObserver(resize);
   ro.observe(stage);
-  experience.addEventListener(
-    "pointermove",
-    (event) => {
-      if (!fine.matches || paused || reduce.matches) return;
-      const r = stage.getBoundingClientRect();
-      mouseX = event.clientX - r.left;
-      mouseY = event.clientY - r.top;
-      targetX = (mouseX / width - 0.5) * 2;
-      targetY = (mouseY / height - 0.5) * 2;
-    },
-    { passive: true },
-  );
+  function point(event) {
+    if (paused || reduce.matches) return;
+    if (
+      !fine.matches &&
+      event.target.closest("a,button,input,select,textarea,summary")
+    )
+      return;
+    const r = stage.getBoundingClientRect();
+    mouseX = event.clientX - r.left;
+    mouseY = event.clientY - r.top;
+    targetX = (mouseX / width - 0.5) * 2;
+    targetY = (mouseY / height - 0.5) * 2;
+  }
+  experience.addEventListener("pointermove", point, { passive: true });
+  experience.addEventListener("pointerdown", point, { passive: true });
   experience.addEventListener("pointerleave", () => {
+    if (paused) return;
     mouseX = mouseY = -10000;
     targetX = targetY = 0;
+  });
+  experience.addEventListener("pointercancel", () => {
+    if (!paused) mouseX = mouseY = -10000;
+  });
+  experience.addEventListener("pointerup", (event) => {
+    if (event.pointerType !== "mouse" && !paused) mouseX = mouseY = -10000;
   });
   // No scroll hijacking. A single pending frame also updates the static paused state.
   window.addEventListener(
@@ -310,6 +380,9 @@ function initSurface() {
   reduce.addEventListener("change", sync);
   pause.addEventListener("click", () => {
     paused = !paused;
+    try {
+      localStorage.setItem("matrica-motion-paused", String(paused));
+    } catch {}
     pause.setAttribute("aria-pressed", String(paused));
     pause.textContent = paused
       ? "Продолжить движение ▷"
@@ -324,10 +397,14 @@ function initSurface() {
     stage.classList.remove("is-ready");
     stage.dataset.renderer = "svg";
     pause.hidden = true;
+    updateHint();
   });
   canvas.addEventListener("webglcontextrestored", () => {
-    // The SVG stays usable; reinitialising is deliberately left to the next navigation.
-    stage.dataset.renderer = "svg";
+    if (!setupGraphics()) return;
+    lost = false;
+    ready = false;
+    resize();
+    sync();
   });
   window.addEventListener("pagehide", () => {
     if (raf) cancelAnimationFrame(raf);
@@ -340,11 +417,13 @@ function initSurface() {
 const hint = document.querySelector(".signal-hint");
 function updateHint() {
   hint.textContent =
-    reduce.matches || stage?.dataset.renderer !== "webgl"
+    reduce.matches ||
+    stage?.dataset.renderer !== "webgl" ||
+    stage?.dataset.motion === "paused"
       ? "Форма личного следа"
       : fine.matches
         ? "Двигай курсор — меняй форму"
-        : "Листай — след меняется";
+        : "Коснись следа или листай";
 }
 updateHint();
 fine.addEventListener("change", updateHint);

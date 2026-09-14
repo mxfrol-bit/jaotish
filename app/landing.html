@@ -17,15 +17,16 @@
     <meta property="og:type" content="website" />
     <link
       rel="icon"
-      href="/static/signal/mark.svg?v=20260914d"
+      href="/static/signal/mark.svg?v=20260914e"
       type="image/svg+xml"
     />
-    <link rel="stylesheet" href="/static/signal/fonts.css?v=20260914d" />
-    <link rel="stylesheet" href="/static/site.css?v=20260914d" />
-    <link rel="stylesheet" href="/static/signal.css?v=20260914d" />
-    <script src="/static/site.js?v=20260914c" defer></script>
+    <link rel="stylesheet" href="/static/signal/fonts.css?v=20260914e" />
+    <link rel="stylesheet" href="/static/site.css?v=20260914e" />
+    <link rel="stylesheet" href="/static/signal.css?v=20260914e" />
+    <script src="/static/navigation.js?v=20260914e" defer></script>
+    <script type="module" src="/static/site.js?v=20260914e"></script>
 
-    <script type="module" src="/static/signal.js?v=20260914d"></script>
+    <script type="module" src="/static/signal.js?v=20260914e"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Перейти к содержанию</a>
@@ -33,7 +34,7 @@
       <div class="container header-inner">
         <a class="wordmark" href="/" aria-label="Матрица — главная"
           ><img
-            src="/static/signal/mark.svg?v=20260914d"
+            src="/static/signal/mark.svg?v=20260914e"
             width="31"
             height="31"
             alt=""
@@ -46,6 +47,19 @@
         <a class="header-cta" href="/history"
           >Мои разборы <span aria-hidden="true">↗</span></a
         >
+        <details class="mobile-menu">
+          <summary>
+            Меню<span class="menu-lines" aria-hidden="true"></span>
+          </summary>
+          <nav aria-label="Навигация на телефоне">
+            <a class="menu-start" href="/#form"
+              >Начать разбор <span aria-hidden="true">↗</span></a
+            ><a href="/#topics">Темы разбора</a
+            ><a href="/history">Мои разборы</a
+            ><a href="/compat">Совместимость</a><a href="/event">Выбор даты</a
+            ><a href="/about">Как это работает</a>
+          </nav>
+        </details>
       </div>
     </header>
     <main id="main">
@@ -53,7 +67,7 @@
         <div class="signal-stage" aria-hidden="true">
           <img
             class="signal-fallback"
-            src="/static/signal/trace.svg?v=20260914d"
+            src="/static/signal/trace.svg?v=20260914e"
             width="800"
             height="1000"
             alt=""
@@ -336,6 +350,23 @@
                   <option>Что мне важно для ощущения уверенности?</option>
                   <option>Какие привычные реакции мне мешают?</option>
                 </select>
+                <div id="custom-question-field" hidden>
+                  <label for="custom-question">Твой вопрос</label>
+                  <textarea
+                    id="custom-question"
+                    name="main_request"
+                    maxlength="300"
+                    rows="3"
+                    aria-describedby="custom-question-hint question-count"
+                    placeholder="Например: как найти формат работы, в котором я смогу раскрыться?"
+                    disabled
+                  ></textarea>
+                  <div class="question-help">
+                    <small id="custom-question-hint" class="field-hint"
+                      >Один вопрос — один фокус разбора.</small
+                    ><span id="question-count">0 / 300</span>
+                  </div>
+                </div>
                 <div class="form-row">
                   <div>
                     <label for="person-name">Как тебя зовут?</label
@@ -363,6 +394,7 @@
                   name="birth_date"
                   inputmode="numeric"
                   placeholder="ДД.ММ.ГГГГ"
+                  autocomplete="bday"
                   maxlength="10"
                   pattern="[0-9]{2}\.[0-9]{2}\.[0-9]{4}"
                   required
@@ -544,7 +576,7 @@
         <div class="footer-top">
           <a class="wordmark" href="/"
             ><img
-              src="/static/signal/mark.svg?v=20260914d"
+              src="/static/signal/mark.svg?v=20260914e"
               width="31"
               height="31"
               alt=""

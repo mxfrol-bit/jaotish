@@ -466,8 +466,8 @@ th{color:var(--muted);font-weight:600;}
 
 
 _FONTS = (
-    "<link rel=icon href='/static/signal/mark.svg?v=20260914d' type='image/svg+xml'>"
-    "<link rel=stylesheet href='/static/signal/fonts.css?v=20260914d'>"
+    "<link rel=icon href='/static/signal/mark.svg?v=20260914e' type='image/svg+xml'>"
+    "<link rel=stylesheet href='/static/signal/fonts.css?v=20260914e'>"
 )
 
 
@@ -521,18 +521,23 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
         f"<title>{html.escape(title)}</title>{_FONTS}"
         f"<style>{_CSS}{_HERO_CSS}{_POLISH_CSS}</style>"
         f"<link rel=stylesheet href='/static/pages.css?v=20260914b'>"
-        f"<link rel=stylesheet href='/static/signal.css?v=20260914d'>"
-        f"<script src='/static/reading.js?v=20260914b' defer></script>{head_extra}</head>"
+        f"<link rel=stylesheet href='/static/signal.css?v=20260914e'>"
+        f"<script src='/static/reading.js?v=20260914b' defer></script>"
+        f"<script src='/static/navigation.js?v=20260914e' defer></script>{head_extra}</head>"
         f"<body>{body}{_REVEAL_JS}</body></html>"
     )
 
 
+_MOBILE_MENU_HTML = '<details class="mobile-menu"><summary>Меню<span class="menu-lines" aria-hidden="true"></span></summary><nav aria-label="Навигация на телефоне"><a class="menu-start" href="/#form">Начать разбор <span aria-hidden="true">↗</span></a><a href="/#topics">Темы разбора</a><a href="/history">Мои разборы</a><a href="/compat">Совместимость</a><a href="/event">Выбор даты</a><a href="/about">Как это работает</a></nav></details>'
+
+
 def _nav() -> str:
     return (
-        "<div class=wrap><div class=nav><a class=brand href='/'><img class=brand-emblem src='/static/signal/mark.svg?v=20260914d' alt='' width=26 height=26>Матрица</a>"
+        "<div class=wrap><div class=nav><a class=brand href='/'><img class=brand-emblem src='/static/signal/mark.svg?v=20260914e' alt='' width=26 height=26>Матрица</a>"
         "<div class=navlinks><a href='/compat'>Совместимость</a>"
         "<a href='/event'>Выбор даты</a><a href='/history'>Мои разборы</a>"
-        "<a href='/about'>Как это работает</a></div></div></div>"
+        "<a href='/about'>Как это работает</a></div>"
+        + _MOBILE_MENU_HTML + "</div></div>"
     )
 
 
@@ -1334,7 +1339,7 @@ def dashboard(pid: str) -> str:
     return (f"<!doctype html><html lang=ru><head><meta charset=utf-8>"
             f"<meta name=viewport content='width=device-width,initial-scale=1'>"
             f"<title>{name} · Профиль · Матрица</title>{fonts}<style>{_DASH_CSS}</style>"
-            f"<link rel=stylesheet href='/static/signal.css?v=20260914d'></head>"
+            f"<link rel=stylesheet href='/static/signal.css?v=20260914e'></head>"
             f"<body class=profile-page>{body}</body></html>")
 
 
