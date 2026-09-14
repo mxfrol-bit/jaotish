@@ -15,17 +15,22 @@
       content="Твоя история больше, чем знак зодиака. Персональный разбор о себе, отношениях и своём направлении."
     />
     <meta property="og:type" content="website" />
-    <link rel="icon" href="/static/mark.svg" type="image/svg+xml" />
+    <link
+      rel="icon"
+      href="/static/particles/mark.svg?v=20260914c"
+      type="image/svg+xml"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Manrope:wght@400;450;500;550;600;650;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/static/site.css?v=20260914b" />
-    <link rel="stylesheet" href="/static/mystic.css?v=20260914b" />
-    <script src="/static/site.js?v=20260914b" defer></script>
-    <script src="/static/mystic.js?v=20260914b" defer></script>
+    <link rel="stylesheet" href="/static/site.css?v=20260914c" />
+    <link rel="stylesheet" href="/static/mystic.css?v=20260914c" />
+    <script src="/static/site.js?v=20260914c" defer></script>
+    <link rel="stylesheet" href="/static/particles.css?v=20260914c" />
+    <script src="/static/particles.js?v=20260914c" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Перейти к содержанию</a>
@@ -33,7 +38,7 @@
       <div class="container header-inner">
         <a class="wordmark" href="/" aria-label="Матрица — главная"
           ><img
-            src="/static/mark.svg?v=20260914b"
+            src="/static/particles/mark.svg?v=20260914c"
             width="31"
             height="31"
             alt=""
@@ -76,23 +81,23 @@
             </p>
           </div>
           <figure class="hero-art">
-            <span class="art-halo" aria-hidden="true"></span
-            ><span class="art-orbit" aria-hidden="true"></span>
             <div class="art-topline">
-              <span>Круг рождения</span><span aria-hidden="true">01 / 12</span>
+              <span>Звёздная гравюра</span
+              ><span aria-hidden="true">М / 01</span>
             </div>
             <img
-              class="astrolabe"
-              src="/static/astrolabe.svg?v=20260914b"
+              class="astrolabe particle-origin"
+              src="/static/particles/origin.svg?v=20260914c"
               width="640"
               height="640"
-              alt="Авторская иллюстрация: карта джйотиш внутри астрономического круга"
+              alt="Золотые частицы и световые нити вокруг тёмного ядра"
+              fetchpriority="high"
             />
             <figcaption>
               <span class="art-cross" aria-hidden="true">+</span
               ><span
                 >Всё начинается с момента рождения<small
-                  >Символическая иллюстрация карты</small
+                  >Рождение света · авторская композиция</small
                 ></span
               ><span class="art-cross" aria-hidden="true">+</span>
             </figcaption>
@@ -121,69 +126,119 @@
           </p>
         </div>
         <div class="topic-grid">
-          <a class="topic-card" href="#form" data-topic="personality"
-            ><div class="card-top">
-              <span class="topic-symbol" aria-hidden="true">☉</span
-              ><span class="card-index">01</span>
+          <a class="topic-card" href="#form" data-topic="personality">
+            <img
+              class="topic-art"
+              src="/static/particles/self.svg?v=20260914c"
+              width="640"
+              height="640"
+              loading="lazy"
+              decoding="async"
+              alt=""
+              aria-hidden="true"
+            />
+            <div class="card-top"><span class="card-index">01</span></div>
+            <div class="topic-content">
+              <h3>Обо мне</h3>
+              <p>
+                На что я могу опереться? Мои сильные стороны и привычные
+                реакции.
+              </p>
             </div>
-            <h3>Обо мне</h3>
-            <p>
-              На что я могу опереться?<br />Мои сильные стороны и привычные
-              реакции.
-            </p>
             <span class="card-link"
-              >Познакомиться с собой <span aria-hidden="true">↗</span></span
-            ></a
-          >
-          <a class="topic-card" href="#form" data-topic="relationships"
-            ><div class="card-top">
-              <span class="topic-symbol paired" aria-hidden="true">○○</span
-              ><span class="card-index">02</span>
+              >Познакомиться с собой<span aria-hidden="true">↗</span></span
+            >
+          </a>
+          <a class="topic-card" href="#form" data-topic="relationships">
+            <img
+              class="topic-art"
+              src="/static/particles/relationships.svg?v=20260914c"
+              width="640"
+              height="640"
+              loading="lazy"
+              decoding="async"
+              alt=""
+              aria-hidden="true"
+            />
+            <div class="card-top"><span class="card-index">02</span></div>
+            <div class="topic-content">
+              <h3>Отношения</h3>
+              <p>
+                Что мне нужно для близости? Потребности, общение и повторяющиеся
+                сценарии.
+              </p>
             </div>
-            <h3>Отношения</h3>
-            <p>
-              Что мне нужно для близости?<br />Потребности, общение и
-              повторяющиеся сценарии.
-            </p>
             <span class="card-link"
-              >Понять свои чувства <span aria-hidden="true">↗</span></span
-            ></a
-          >
-          <a class="topic-card" href="#form" data-topic="work"
-            ><div class="card-top">
-              <span class="topic-symbol" aria-hidden="true">↗</span
-              ><span class="card-index">03</span>
+              >Понять свои чувства<span aria-hidden="true">↗</span></span
+            >
+          </a>
+          <a class="topic-card" href="#form" data-topic="work">
+            <img
+              class="topic-art"
+              src="/static/particles/vocation.svg?v=20260914c"
+              width="640"
+              height="640"
+              loading="lazy"
+              decoding="async"
+              alt=""
+              aria-hidden="true"
+            />
+            <div class="card-top"><span class="card-index">03</span></div>
+            <div class="topic-content">
+              <h3>Работа и деньги</h3>
+              <p>
+                Где раскрываются мои способности? Формат работы, мотивация и
+                привычки.
+              </p>
             </div>
-            <h3>Работа и деньги</h3>
-            <p>
-              Где раскрываются мои способности?<br />Формат работы, мотивация и
-              привычки.
-            </p>
             <span class="card-link"
-              >Найти своё направление <span aria-hidden="true">↗</span></span
-            ></a
-          >
-          <a class="topic-card" href="#form" data-topic="current_period"
-            ><div class="card-top">
-              <span class="topic-symbol" aria-hidden="true">◷</span
-              ><span class="card-index">04</span>
+              >Найти своё направление<span aria-hidden="true">↗</span></span
+            >
+          </a>
+          <a class="topic-card" href="#form" data-topic="current_period">
+            <img
+              class="topic-art"
+              src="/static/particles/rhythm.svg?v=20260914c"
+              width="640"
+              height="640"
+              loading="lazy"
+              decoding="async"
+              alt=""
+              aria-hidden="true"
+            />
+            <div class="card-top"><span class="card-index">04</span></div>
+            <div class="topic-content">
+              <h3>Мой период</h3>
+              <p>
+                На что обратить внимание сейчас? Темы текущего месяца и вопросы
+                к себе.
+              </p>
             </div>
-            <h3>Мой период</h3>
-            <p>
-              На что обратить внимание сейчас?<br />Темы текущего месяца и
-              вопросы к себе.
-            </p>
             <span class="card-link"
-              >Посмотреть свой период <span aria-hidden="true">↗</span></span
-            ></a
-          >
+              >Посмотреть свой период<span aria-hidden="true">↗</span></span
+            >
+          </a>
         </div>
         <div class="extra-topics">
           <p>Хочется посмотреть на ситуацию шире?</p>
           <a href="/compat"
-            >Совместимость с человеком <span aria-hidden="true">↗</span></a
+            ><img
+              src="/static/particles/resonance.svg?v=20260914c"
+              width="100"
+              height="100"
+              alt=""
+              loading="lazy"
+              aria-hidden="true"
+            />Совместимость с человеком <span aria-hidden="true">↗</span></a
           ><a href="/event"
-            >Разбор выбранной даты <span aria-hidden="true">↗</span></a
+            ><img
+              src="/static/particles/moment.svg?v=20260914c"
+              width="100"
+              height="100"
+              alt=""
+              loading="lazy"
+              aria-hidden="true"
+            />Разбор выбранной даты <span aria-hidden="true">↗</span></a
           >
         </div>
       </section>
@@ -558,7 +613,7 @@
         <div class="footer-top">
           <a class="wordmark" href="/"
             ><img
-              src="/static/mark.svg?v=20260914b"
+              src="/static/particles/mark.svg?v=20260914c"
               width="31"
               height="31"
               alt=""

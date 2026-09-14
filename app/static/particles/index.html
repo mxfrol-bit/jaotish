@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ru">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Звёздная гравюра · Матрица</title
+  ><style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #09090d;
+      color: #e8e2d7;
+      font:
+        14px/1.8 system-ui,
+        sans-serif;
+    }
+    main {
+      max-width: 1200px;
+      padding: 54px 30px 80px;
+      margin: auto;
+    }
+    header {
+      margin-bottom: 40px;
+    }
+    small {
+      color: #ad966e;
+      font-size: 10px;
+      letter-spacing: 0.17em;
+      text-transform: uppercase;
+    }
+    h1 {
+      font:
+        400 clamp(40px, 6vw, 75px) / 1.1 Georgia,
+        serif;
+      margin: 20px 0;
+    }
+    header p {
+      color: #a9a297;
+      max-width: 680px;
+      font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    figure {
+      margin: 0;
+      background: #101015;
+      border: 1px solid #ffffff12;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    figure:first-child {
+      grid-column: span 2;
+      grid-row: span 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+    }
+    figure:last-child img {
+      padding: 25%;
+    }
+    figcaption {
+      padding: 0 23px 24px;
+    }
+    h2 {
+      font:
+        400 24px Georgia,
+        serif;
+      margin: 5px 0 14px;
+    }
+    a {
+      color: #ccb587;
+      text-underline-offset: 4px;
+      font-size: 12px;
+    }
+    .swatches {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 40px;
+    }
+    .swatches span {
+      padding: 9px 14px;
+      border: 1px solid #ffffff22;
+      border-radius: 4px;
+      font: 11px monospace;
+    }
+    .note {
+      color: #9a948b;
+      font-size: 12px;
+      margin: 25px 0;
+      max-width: 780px;
+    }
+    @media (max-width: 700px) {
+      main {
+        padding: 32px 20px;
+      }
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      figure:first-child {
+        grid-column: 1/-1;
+        grid-row: auto;
+      }
+      figcaption {
+        padding: 0 16px 20px;
+      }
+      h2 {
+        font-size: 19px;
+      }
+    }
+    @media (max-width: 400px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      figure:first-child {
+        grid-column: auto;
+      }
+    }
+  </style>
+  <main>
+    <header>
+      <small>Матрица / Авторская графика / 2026</small>
+      <h1>Звёздная гравюра</h1>
+      <p>
+        Свет становится формой. Восемь векторных композиций из частиц, тонких
+        нитей и световых узлов — для главной страницы и каждого отдельного
+        вопроса.
+      </p>
+    </header>
+    <div class="grid">
+      <figure>
+        <img src="origin.svg" width="640" height="640" alt="Рождение света" />
+        <figcaption>
+          <small>М / 01</small>
+          <h2>Рождение света</h2>
+          <a href="origin.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="self.svg" width="640" height="640" alt="Внутренний свет" />
+        <figcaption>
+          <small>М / 02</small>
+          <h2>Внутренний свет</h2>
+          <a href="self.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+      <figure>
+        <img
+          src="relationships.svg"
+          width="640"
+          height="640"
+          alt="Нити близости"
+        />
+        <figcaption>
+          <small>М / 03</small>
+          <h2>Нити близости</h2>
+          <a href="relationships.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+      <figure>
+        <img
+          src="vocation.svg"
+          width="640"
+          height="640"
+          alt="Своё направление"
+        />
+        <figcaption>
+          <small>М / 04</small>
+          <h2>Своё направление</h2>
+          <a href="vocation.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="rhythm.svg" width="640" height="640" alt="Ритм времени" />
+        <figcaption>
+          <small>М / 05</small>
+          <h2>Ритм времени</h2>
+          <a href="rhythm.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="resonance.svg" width="640" height="640" alt="Созвучие" />
+        <figcaption>
+          <small>М / 06</small>
+          <h2>Созвучие</h2>
+          <a href="resonance.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="moment.svg" width="640" height="640" alt="Точка события" />
+        <figcaption>
+          <small>М / 07</small>
+          <h2>Точка события</h2>
+          <a href="moment.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="mark.svg" width="640" height="640" alt="Световой узел" />
+        <figcaption>
+          <small>М / 08</small>
+          <h2>Световой узел</h2>
+          <a href="mark.svg" download>Скачать SVG ↗</a>
+        </figcaption>
+      </figure>
+    </div>
+    <div class="swatches">
+      <span style="color: #f0d6a1">Свет · #F0D6A1</span
+      ><span style="color: #d3b47b">Золото · #D3B47B</span
+      ><span style="color: #a68a57">Бронза · #A68A57</span
+      ><span style="color: #ddd9cf">Серебро · #DDD9CF</span>
+    </div>
+    <p class="note">
+      Все работы — редактируемые SVG с прозрачным фоном. Точки и линии остаются
+      векторными при любом увеличении. Композиции созданы специально для
+      «Матрицы»; это художественные образы, а не персональные астрологические
+      карты.
+    </p>
+  </main>
+</html>

@@ -1,0 +1,50 @@
+[
+  {
+    "file": "origin.svg",
+    "name": "Рождение света",
+    "particles": 3942,
+    "bytes": 88056
+  },
+  {
+    "file": "self.svg",
+    "name": "Внутренний свет",
+    "particles": 2203,
+    "bytes": 52799
+  },
+  {
+    "file": "relationships.svg",
+    "name": "Нити близости",
+    "particles": 3974,
+    "bytes": 85339
+  },
+  {
+    "file": "vocation.svg",
+    "name": "Своё направление",
+    "particles": 3512,
+    "bytes": 78235
+  },
+  {
+    "file": "rhythm.svg",
+    "name": "Ритм времени",
+    "particles": 3454,
+    "bytes": 75770
+  },
+  {
+    "file": "resonance.svg",
+    "name": "Созвучие",
+    "particles": 3108,
+    "bytes": 70170
+  },
+  {
+    "file": "moment.svg",
+    "name": "Точка события",
+    "particles": 3159,
+    "bytes": 68626
+  },
+  {
+    "file": "mark.svg",
+    "name": "Световой узел",
+    "particles": 0,
+    "bytes": 649
+  }
+]

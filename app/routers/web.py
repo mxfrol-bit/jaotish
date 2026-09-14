@@ -466,7 +466,7 @@ th{color:var(--muted);font-weight:600;}
 
 
 _FONTS = (
-    "<link rel=icon href='/static/mark.svg?v=20260914b' type='image/svg+xml'>"
+    "<link rel=icon href='/static/particles/mark.svg?v=20260914c' type='image/svg+xml'>"
     "<link rel=preconnect href='https://fonts.googleapis.com'>"
     "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
     "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
@@ -527,6 +527,7 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
         f"<style>{_CSS}{_HERO_CSS}{_POLISH_CSS}</style>"
         f"<link rel=stylesheet href='/static/pages.css?v=20260914b'>"
         f"<link rel=stylesheet href='/static/mystic.css?v=20260914b'>"
+        f"<link rel='stylesheet' href='/static/particles.css?v=20260914c'>"
         f"<script src='/static/reading.js?v=20260914b' defer></script>{head_extra}</head>"
         f"<body>{body}{_REVEAL_JS}</body></html>"
     )
@@ -534,7 +535,7 @@ def _page(title: str, body: str, head_extra: str = "") -> str:
 
 def _nav() -> str:
     return (
-        "<div class=wrap><div class=nav><a class=brand href='/'>Матрица<span>.</span></a>"
+        "<div class=wrap><div class=nav><a class=brand href='/'><img class=brand-emblem src='/static/particles/mark.svg?v=20260914c' alt='' width=30 height=30>Матрица<span>.</span></a>"
         "<div class=navlinks><a href='/compat'>Совместимость</a>"
         "<a href='/event'>Выбор даты</a><a href='/history'>Мои разборы</a>"
         "<a href='/about'>Как это работает</a></div></div></div>"
@@ -580,14 +581,21 @@ _STARFIELD_JS = r"""
 """
 
 
-def _hero(title: str, kicker: str = "", sub: str = "") -> str:
-    """Общая типографическая шапка внутренних страниц."""
+_TOPIC_ART = {
+    "personality": "self", "relationships": "relationships", "work": "vocation",
+    "current_period": "rhythm", "compatibility": "resonance", "event": "moment",
+}
+
+
+def _hero(title: str, kicker: str = "", sub: str = "", art: str = "") -> str:
+    """Shared page heading with an optional topic-specific vector engraving."""
     k = f"<p class=kicker>{html.escape(kicker)}</p>" if kicker else ""
     s = f"<p class=sub>{html.escape(sub)}</p>" if sub else ""
-    return (
-        "<section class=chero>"
-        f"<div class=inner>{k}<h1>{title}</h1>{s}</div></section>"
-    )
+    asset = _TOPIC_ART.get(art)
+    emblem = (f"<img class=page-emblem src='/static/particles/{asset}.svg?v=20260914c' "
+              "alt='' aria-hidden=true width=640 height=640>") if asset else ""
+    css = "chero has-emblem" if asset else "chero"
+    return f"<section class='{css}'>{emblem}<div class=inner>{k}<h1>{title}</h1>{s}</div></section>"
 
 
 def _md_to_html(md: str) -> str:
@@ -1033,7 +1041,7 @@ def report(
 # ---------------- совместимость ----------------
 @router.get("/compat", response_class=HTMLResponse)
 def compat_form() -> str:
-    body = f"""{_nav()}{_hero('Совместимость', 'Разбор с конкретным человеком', 'Где вы усиливаете друг друга, где задеваете и как общаться — без приговора «вместе/нет».')}
+    body = f"""{_nav()}{_hero('Совместимость', 'Разбор с конкретным человеком', 'Где вы усиливаете друг друга, где задеваете и как общаться — без приговора «вместе/нет».', 'compatibility')}
     <div class=wrap id=form>
       <div class=formcard>
         <div class=tabbar>
@@ -1106,7 +1114,7 @@ def compat_run(
 # ---------------- сделка / событие ----------------
 @router.get("/event", response_class=HTMLResponse)
 def event_form() -> str:
-    body = f"""{_nav()}{_hero('Выбор даты', 'Подходит ли день для дела', 'Оценка конкретной даты для сделки, переговоров, запуска или важного разговора.')}
+    body = f"""{_nav()}{_hero('Выбор даты', 'Подходит ли день для дела', 'Оценка конкретной даты для сделки, переговоров, запуска или важного разговора.', 'event')}
     <div class=wrap id=form>
       <div class=formcard>
         <div class=tabbar>
@@ -1375,7 +1383,7 @@ def result(pid: str) -> str:
     advanced = (f"<details><summary>Расчёт: что именно посчитано и по каким системам</summary>"
                 f"{_md_to_html(tech)}</details>") if tech else ""
     positions = _positions_html(data)
-    body = f"""{_nav()}{_hero(title, 'Твой разбор', sub)}
+    body = f"""{_nav()}{_hero(title, 'Твой разбор', sub, atype_val)}
     <main class="wrap report-main">
       {f'<section class=sec><h2>Коротко</h2>{summary}</section>' if summary else ''}
       {f'<div class=cred>{html.escape(basis)}</div>' if basis else ''}

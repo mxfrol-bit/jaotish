@@ -39,9 +39,15 @@ supabase/schema.sql  таблицы me_profiles, me_feedback
 
 Главная страница редактируется в `app/landing.html`, оформление и поведение —
 в `app/static/site.css` и `app/static/site.js`. Стили внутренних страниц находятся
-в `app/static/pages.css`. Чёрная тема, лунное свечение и звёздное поле —
-`app/static/mystic.css`, `app/static/mystic.js`. Сборка фронтенда не нужна. SVG-иллюстрация на главной
+в `app/static/pages.css`. Чёрная тема — в `app/static/mystic.css`.
+Сборка фронтенда не нужна. SVG-иллюстрация на главной
 декоративная, персональные расчёты по-прежнему выполняются на сервере.
+
+Фирменная серия «Звёздная гравюра» находится в `app/static/particles/`:
+семь иллюстраций и знак, все в SVG без растровых вставок. Галерея —
+`/static/particles/index.html`. Генератор `scripts/generate_particle_art.py`
+воспроизводит каждый рисунок с фиксированным seed; стили и анимация серии —
+`app/static/particles.css` и `app/static/particles.js`.
 
 Проверка веб-формы без AI и внешней БД: `.venv/bin/python -m unittest discover -s tests -v`.
 Для локального визуального прогона отключите `TELEGRAM_BOT_TOKEN`, чтобы не запускать
