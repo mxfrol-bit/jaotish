@@ -14,7 +14,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 
-# Премиальный лендинг, собранный скиллом web-artifacts-builder (React+Tailwind → один HTML).
+# Редактируемый HTML; общие стили и поведение в app/static/.
 _LANDING_FILE = Path(__file__).resolve().parents[1] / "landing.html"
 _LANDING_HTML = _LANDING_FILE.read_text(encoding="utf-8") if _LANDING_FILE.exists() else ""
 
@@ -463,12 +463,13 @@ th{color:var(--muted);font-weight:600;}
 
 
 _FONTS = (
+    "<link rel=icon href='/static/mark.svg' type='image/svg+xml'>"
     "<link rel=preconnect href='https://fonts.googleapis.com'>"
     "<link rel=preconnect href='https://fonts.gstatic.com' crossorigin>"
     "<link rel=stylesheet href='https://fonts.googleapis.com/css2?"
-    "family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&"
-    "family=Space+Grotesk:wght@300;400;500;600&"
-    "family=Space+Mono:wght@400;700&display=swap'>"
+    "family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&"
+    "family=Manrope:wght@400;500;600;700&"
+    "family=IBM+Plex+Mono:wght@400;500&display=swap'>"
 )
 
 
@@ -509,11 +510,19 @@ _REVEAL_JS = (
 
 
 def _page(title: str, body: str, head_extra: str = "") -> str:
+    field_index = 0
+    def connect_label(match):
+        nonlocal field_index
+        field_index += 1
+        field_id = f"field-{field_index}"
+        return f'<label for="{field_id}">{match[1]}</label><{match[2]} id="{field_id}"'
+    body = re.sub(r"<label>(.*?)</label><(input|select)\b", connect_label, body)
     return (
         f"<!doctype html><html lang=ru><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{html.escape(title)}</title>{_FONTS}"
-        f"<style>{_CSS}{_HERO_CSS}{_POLISH_CSS}</style>{head_extra}</head>"
+        f"<style>{_CSS}{_HERO_CSS}{_POLISH_CSS}</style>"
+        f"<link rel=stylesheet href='/static/pages.css?v=20260914a'>{head_extra}</head>"
         f"<body>{body}{_REVEAL_JS}</body></html>"
     )
 
@@ -522,12 +531,12 @@ def _nav() -> str:
     return (
         "<div class=wrap><div class=nav><a class=brand href='/'>Матрица<span>.</span></a>"
         "<div class=navlinks><a href='/compat'>Совместимость</a>"
-        "<a href='/event'>Выбор даты</a><a href='/proof'>Точность</a>"
+        "<a href='/event'>Выбор даты</a><a href='/example'>Пример разбора</a>"
         "<a href='/about'>Как это работает</a></div></div></div>"
     )
 
 
-# Кинематографичная тёмная шапка с живым звёздным полем — единый вау-стиль для всех страниц.
+# Общая шапка страниц; окончательные цвета и размеры задаёт static/pages.css.
 _HERO_CSS = (
     ".chero{position:relative;overflow:hidden;border-bottom:1px solid var(--line);"
     "min-height:44vh;display:flex;align-items:flex-end;}"
@@ -567,13 +576,12 @@ _STARFIELD_JS = r"""
 
 
 def _hero(title: str, kicker: str = "", sub: str = "") -> str:
-    """Тёмная шапка с анимированным звёздным полем + крупным засечным заголовком."""
+    """Общая типографическая шапка внутренних страниц."""
     k = f"<p class=kicker>{html.escape(kicker)}</p>" if kicker else ""
     s = f"<p class=sub>{html.escape(sub)}</p>" if sub else ""
     return (
-        "<section class=chero><canvas id=sky></canvas>"
+        "<section class=chero>"
         f"<div class=inner>{k}<h1>{title}</h1>{s}</div></section>"
-        "<script>" + _STARFIELD_JS + "</script>"
     )
 
 
@@ -605,6 +613,7 @@ def _spinner_page(pid: str, title: str, lead: str) -> str:
     clean = [re.sub(r"^[^0-9A-Za-zА-Яа-яЁё]+", "", m).strip() for m in LOADING_MESSAGES]
     msgs = _json.dumps(clean, ensure_ascii=False)
     css = (
+        "body{background:#143b3b;}"
         "#sky{position:fixed;inset:0;width:100%;height:100%;cursor:crosshair;}"
         ".lbrand{position:fixed;top:22px;left:24px;z-index:3;font-family:Fraunces,serif;"
         "font-size:18px;color:#ece7d8;text-decoration:none;}"
@@ -614,12 +623,14 @@ def _spinner_page(pid: str, title: str, lead: str) -> str:
         "color:#ece7d8;margin:0 0 18px;letter-spacing:-.01em;}"
         ".lstatus{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:#8f8f8a;"
         "min-height:1.4em;transition:opacity .4s;}"
+        ".lhelp{font:12px/1.8 'Manrope',sans-serif;color:#bacbbb;max-width:380px;margin:20px auto 0;}"
     )
     body = (
         "<canvas id=sky></canvas>"
         "<a class=lbrand href='/'>Матрица</a>"
         "<div class=loverlay><h1 class=ltitle>" + html.escape(title) + "</h1>"
-        "<div id=ld class=lstatus></div></div>"
+        "<div id=ld class=lstatus aria-live=polite></div>"
+        "<p class=lhelp>Это может занять несколько минут. Страница обновится автоматически, когда разбор будет готов.</p></div>"
         "<script>" + _STAGE_JS + "</script>"
         "<script>(function(){var M=" + msgs + ",i=Math.floor(Math.random()*M.length),"
         "e=document.getElementById('ld');function t(){e.style.opacity=0;"
@@ -749,7 +760,7 @@ _STAGE_JS = r"""
 
 @router.get("/", response_class=HTMLResponse)
 def landing() -> str:
-    # Премиальный лендинг (React+Tailwind, собран в один HTML). Форма постит на /report.
+    # Семантический HTML без сборки; форма отправляется на /report.
     if _LANDING_HTML:
         return _LANDING_HTML
     return _page("Матрица", f"{_nav()}<div class=wrap><div class=hero><h1>Матрица</h1>"
@@ -767,43 +778,43 @@ def deck() -> str:
 
 @router.get("/about", response_class=HTMLResponse)
 def about() -> str:
-    body = (f"{_nav()}{_hero('Как это работает', 'Метод', 'На стыке точного расчёта и поведенческой психологии.')}"
-            f"<div class=wrap><div class=sec>{_md_to_html(METHOD_BASIS)}</div>"
-            "<p class=foot><a href='/proof'>Доказательство точности →</a> · "
-            "<a href='/#form'>к разбору</a></p></div>")
+    body = f"""{_nav()}{_hero('Как устроен твой разбор', 'От данных к интерпретации', 'Несколько традиций, понятный язык и пространство для твоего собственного взгляда.')}
+    <main class=wrap>
+      <section class=sec><h2>Сначала вопрос, потом система</h2><p>Не обязательно выбирать астрологическую школу заранее. Начни с вопроса о себе, отношениях, работе или текущем периоде. Программа рассчитает доступные показатели по твоим данным, а под разбором перечислит использованные системы.</p></section>
+      <div class=method-list>
+        <section class=sec><h2>Джйотиш</h2><p>Индийская астрологическая традиция. Использует сидерический зодиак, положение Луны и систему жизненных периодов для символической интерпретации карты.</p></section>
+        <section class=sec><h2>Западная астрология</h2><p>В нашем расчёте — тропический зодиак, планеты и, при наличии времени и места рождения, дома и асцендент. Даёт свой язык для разговора о характере и отношениях.</p></section>
+        <section class=sec><h2>Ба Цзы</h2><p>Китайская календарная система, которая описывает момент рождения через столпы и пять элементов. Её интерпретации могут отличаться от астрологических.</p></section>
+        <section class=sec><h2>Нумерология и арканы</h2><p>Символические подходы, которые связывают числа даты рождения с темами и образами. Дополняют разбор вопросами для размышления.</p></section>
+      </div>
+      <section class=sec><h2>Где здесь нейросеть</h2><p>Расчёт выполняет программа. Нейросеть получает доступные результаты и составляет текст по выбранному вопросу. Если данных для системы не хватает, она не должна выдавать её показатели за рассчитанные.</p><p>Даже при одинаковых исходных данных формулировки текста могут различаться. Расчёт при тех же параметрах остаётся воспроизводимым.</p></section>
+      <section class=sec><h2>Что означает точность</h2><p>Точность положения планет не доказывает точность выводов о личности или будущем. Астрологическая интерпретация не является научно подтверждённой диагностикой и не гарантирует события. Сравнивай текст со своим опытом: с ним можно не соглашаться.</p><a class=inline-link href='/proof'>Посмотреть, как рассчитываются положения планет →</a></section>
+      <section class=sec id=data><h2>Как используются твои данные</h2><p>Имя, пол, дата, время и город рождения, если они указаны, поступают на сервер для расчёта. Имя и пол нужны для обращения, а выбранная тема и вопрос — для содержания.</p><p>Данные профиля и результаты расчёта передаются через OpenRouter модели, которая составляет текст. Профиль и готовый разбор сохраняются в серверной базе Supabase.</p><p>Готовый результат открывается по индивидуальной ссылке без входа в аккаунт. Любой, у кого есть эта ссылка, сможет прочитать разбор. Передавай её только тем, с кем хочешь им поделиться.</p><p>Форма на этой странице не сохраняет дату и время рождения в локальном хранилище браузера. Для исправления данных создай новый разбор.</p></section>
+      <p class=foot><a class=cta href='/#form'>Перейти к своему вопросу ↗</a></p>
+    </main>"""
     return _page("Как это работает · Матрица", body)
 
 
 @router.get("/proof", response_class=HTMLResponse)
 def proof() -> str:
-    """Маркетинговый экран: откуда берётся точность + живой расчёт-образец."""
-    geo = {"lat": 51.4769, "lon": 0.0, "timezone": "UTC"}  # Гринвич, эпоха J2000
+    geo = {"lat": 51.4769, "lon": 0.0, "timezone": "UTC"}
     sample = {"calculation_modules": {"western_astrology": astrology.western(date(2000, 1, 1), "12:00", geo)}}
-    table = _positions_html(sample)
-    body = f"""{_nav()}{_hero('Откуда точность', 'Доказательство', 'Те же эфемериды, что в профессиональной астрономии и навигации аппаратов.')}
-    <div class=wrap>
-      <div class=strip>
-        <span><b>NASA JPL DE431</b></span>
-        <span><b>Детерминированно</b> — одна дата всегда даёт один результат</span>
-        <span><b>Точность до угловой минуты</b></span>
-      </div>
-      <div class=sec>
-        <p>Положения светил считает <b>Swiss Ephemeris</b> (Astrodienst) на базе
-        <b>NASA JPL DE431</b> — тех же эфемерид, что используют в профессиональной астрономии
-        и расчёте траекторий космических аппаратов.</p>
-        <h2>Что это значит на практике</h2>
-        <p>Это не «приблизительный гороскоп». Это воспроизводимый астрономический расчёт:
-        мы берём дату, время и координаты — и получаем положение каждого светила с точностью
-        до угловой минуты. Те же координаты вы увидите в любом профессиональном источнике
-        (Astro.com, Co-Star) — мы сверяли: совпадение до угловой минуты.</p>
-      </div>
-      <div class=sectionhead>Живой образец расчёта — эпоха J2000 (1 января 2000, 12:00 UTC, Гринвич)</div>
-      {table}
-      <p class=note>Это рассчитано прямо сейчас этим же движком. Любую дату можно проверить
-      против профессионального эфемеридного источника — числа совпадут.</p>
-      <p class=foot><a class=cta href='/#form'>Построить мою карту</a></p>
-    </div>"""
-    return _page("Доказательство точности · Матрица", body)
+    body = f"""{_nav()}{_hero('Что именно мы рассчитываем', 'Расчёт и его границы', 'Положение планет можно вычислить. Значение, которое мы ему придаём, — уже интерпретация.')}
+    <main class=wrap><section class=sec><h2>Воспроизводимые координаты</h2><p>Для астрономической части используется Swiss Ephemeris. Дата, время и координаты места задают исходные условия. При одинаковых параметрах и настройках программа возвращает одинаковые положения планет.</p><p>Без точного времени и места рождения часть показателей недоступна. При приблизительном времени асцендент и дома могут измениться.</p><h2>Чего расчёт не подтверждает</h2><p>Точность координат не означает, что по ним можно достоверно узнать характер, дату брака или будущий доход. Астрологический текст — символическая интерпретация, которую стоит сопоставлять со своим опытом.</p></section><div class=sectionhead>Пример: 1 января 2000, 12:00 UTC, Гринвич</div>{_positions_html(sample)}<p class=note>Положения ниже рассчитаны тем же модулем, который используется для персональных разборов.</p><p class=foot><a class=cta href='/#form'>Начать свой разбор ↗</a></p></main>"""
+    return _page("Расчёт и его границы · Матрица", body)
+
+
+@router.get("/example", response_class=HTMLResponse)
+def example() -> str:
+    body = f"""{_nav()}{_hero('Твоя опора — умение видеть глубже', 'Пример разбора', 'Обо мне · Какие мои сильные стороны?')}
+    <main class='wrap report-main'><div class=cred>Редакционный пример формата. Это вымышленная иллюстрация текста, без персонального расчёта и привязки к дате рождения.</div>
+    <section class=sec><h2>Коротко</h2><p>Возможно, тебе важно сначала понять смысл, а уже потом действовать. Это помогает замечать детали, которые другие пропускают.</p><p>Внимательность становится силой, когда не превращается в бесконечную проверку. Тебе может быть легче раскрыться там, где есть свобода выбирать свой ритм.</p></section>
+    <nav class=toc aria-label='Разделы примера'><a href='#strengths'>Сильные стороны</a><a href='#friction'>Что может мешать</a><a href='#first-step'>Первый шаг</a></nav>
+    <section class=sec id=strengths><h2>На что можно опереться</h2><p>Представь задачу, в которой не хватает ясности. Возможно, ты замечаешь противоречия, задаёшь точные вопросы и постепенно собираешь целую картину. В работе это может проявляться как внимание к смыслу, а в отношениях — как интерес к тому, что человек на самом деле хочет сказать.</p><p>Проверь по своему опыту: за какой помощью к тебе чаще всего обращаются? Ответ может подсказать, какие способности окружающие уже замечают.</p></section>
+    <section class=sec id=friction><h2>Что может мешать</h2><p>Иногда поиск полной уверенности откладывает первый шаг. Если это знакомо, попробуй отделить то, что нужно выяснить сейчас, от того, что можно узнать в процессе.</p><p>Это не означает, что тебе нужно всегда действовать быстрее. В некоторых ситуациях именно пауза и внимательная проверка помогают.</p></section>
+    <section class=sec id=first-step><h2>Маленький шаг на сегодня</h2><p>Вспомни ситуацию, в которой тебе было легко. Запиши, что помогло: люди, темп, ясная задача или свобода решений. Выбери одно условие, которое можно повторить на этой неделе.</p><p>Это общее упражнение для размышления, а не астрологический прогноз. Если описание не откликается, используй его как повод сформулировать свой ответ.</p></section>
+    <div class=profile-actions><a class=cta href='/#form'>Теперь мой разбор ↗</a><a class=btnlink href='/about'>Как это работает</a></div><p class=foot>Твой персональный разбор будет основан на введённых данных, доступных расчётах и выбранном вопросе.</p></main>"""
+    return _page("Пример разбора · Матрица", body)
 
 
 # ---------------- основной разбор ----------------
@@ -817,6 +828,11 @@ def _build_and_save(pid: str, req: ProfileRequest, where: str) -> None:
         database.log_error("exception", where, f"{type(e).__name__}: {e}")
 
 
+def _form_error(message: str) -> HTMLResponse:
+    body = f"{_nav()}<main class=wrap><div class=error-panel><h1>Проверь данные</h1><p>{html.escape(message)}</p><p><a class=cta href='/#form'>Вернуться к анкете</a></p></div></main>"
+    return HTMLResponse(_page("Проверь данные · Матрица", body), status_code=422)
+
+
 @router.post("/report", response_class=HTMLResponse)
 def report(
     background_tasks: BackgroundTasks,
@@ -827,16 +843,28 @@ def report(
     time_precision: str = Form("exact"),
     birth_place: str = Form(""),
     analysis_type: str = Form("personality"),
+    main_request: str = Form("", max_length=300),
 ) -> str:
     bd = _parse_date(birth_date)
-    if not bd:
-        return _page("Ошибка", f"{_nav()}<div class=wrap><h1>Неверная дата</h1>"
-                     "<p>Формат: ДД.ММ.ГГГГ.</p><a href='/'>← назад</a></div>")
+    if not bd or not date(1900, 1, 1) <= bd <= date.today():
+        return _form_error("Укажи существующую дату рождения от 01.01.1900 до сегодняшнего дня в формате ДД.ММ.ГГГГ.")
+    if gender.strip() not in {"ж", "м"}:
+        return _form_error("Выбери пол, чтобы мы могли правильно обращаться к тебе.")
+    if not name.strip() or len(name.strip()) > 80:
+        return _form_error("Укажи имя длиной от 1 до 80 символов.")
+    if len(birth_place.strip()) > 120:
+        return _form_error("Укажи название города длиной до 120 символов.")
+    if time_precision not in {"exact", "approx", "unknown"}:
+        return _form_error("Выбери, насколько точно известно время рождения.")
     try:
         atype = AnalysisType(analysis_type)
     except ValueError:
         atype = AnalysisType.personality
-    bt = birth_time.strip() or None
+    if atype not in {AnalysisType.personality, AnalysisType.relationships, AnalysisType.work, AnalysisType.current_period}:
+        return _form_error("Выбери тему из формы. Для совместимости и выбора даты есть отдельные страницы.")
+    bt = None if time_precision == "unknown" else (birth_time.strip() or None)
+    if bt and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", bt):
+        return _form_error("Укажи время в формате ЧЧ:ММ, например 14:30, или выбери «Не знаю».")
     period = None
     if atype == AnalysisType.current_period:
         today = date.today()
@@ -846,7 +874,7 @@ def report(
         birth_time=bt, time_precision=(time_precision if bt else "unknown"),
         birth_place=(birth_place.strip() or None),
         period_from=period[0] if period else None, period_to=period[1] if period else None,
-        main_request=_GENERAL_QUESTION.get(atype.value, ""), analysis_type=atype,
+        main_request=main_request.strip() or _GENERAL_QUESTION.get(atype.value, ""), analysis_type=atype,
     )
     pid = uuid.uuid4().hex
     background_tasks.add_task(_build_and_save, pid, req, "web/report")
@@ -920,7 +948,7 @@ def compat_run(
                        birth_place=(place_b.strip() or None), analysis_type=AnalysisType.compatibility)
     pid = uuid.uuid4().hex
     background_tasks.add_task(_build_synastry_and_save, pid, a, b)
-    return _spinner_page(pid, "Считаю ваш резонанс…",
+    return _spinner_page(pid, "Собираю ваш разбор…",
                          "Смотрю, где вы усиливаете друг друга и где задеваете. До минуты.")
 
 
@@ -954,7 +982,7 @@ def event_form() -> str:
             <div><label>Что за событие</label><input name=event_desc placeholder='подписание сделки' required></div>
           </div>
           <button type=submit>Оценить дату</button>
-          <p class=note>Вероятностный вывод: скорее благоприятно / нейтрально / лучше перенести. Не финансовый совет.</p>
+          <p class=note>Символическая интерпретация выбранного дня. Она не гарантирует исход события и не заменяет оценку реальных обстоятельств.</p>
         </form>
       </div>
     </div>"""
@@ -1193,23 +1221,22 @@ def result(pid: str) -> str:
                 f"{_md_to_html(tech)}</details>") if tech else ""
     positions = _positions_html(data)
     body = f"""{_nav()}{_hero(title, 'Твой разбор', sub)}
-    <div class=wrap>
+    <main class="wrap report-main">
       {f'<section class=sec><h2>Коротко</h2>{summary}</section>' if summary else ''}
       {f'<div class=cred>{html.escape(basis)}</div>' if basis else ''}
-      {_natal_block(data, pid)}
-      {positions}
       <div class=actions>
-        <a class=btnlink href='/profile/{pid}'>Дашборд профиля</a>
+        <a class=btnlink href='/profile/{pid}'>Моя карта в цифрах</a>
         <a class=btnlink href='/voice/{pid}.mp3'>Слушать разбор</a>
-        <a class=btnlink href='/'>Новый разбор</a>
+        <a class=btnlink href='/#form'>Новый вопрос</a>
         <a class=btnlink href='/compat'>Совместимость</a>
       </div>
       <h2 class=more>Подробная расшифровка</h2>
       {toc_html}
       {cards}
+      <h2 class=more>Карта и расчёт</h2>{_natal_block(data, pid)}<details><summary>Положения планет</summary>{positions}</details>
       {advanced}
-      <p class=foot>Это интерпретация, а не вывод о тебе: если что-то не откликается — так бывает. Важные решения о здоровье, деньгах и отношениях ты принимаешь сам(а).</p>
-    </div>"""
+      <p class=foot>Это интерпретация, а не вывод о тебе: если что-то не откликается — так бывает. Важные решения о здоровье, деньгах и отношениях остаются за тобой.</p>
+    </main>"""
     return _page("Твой разбор · Матрица", body)
 
 

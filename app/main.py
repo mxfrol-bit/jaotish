@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .routers import profiles, web
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Matrix Engine", version=config.METHOD_VERSION, lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(profiles.router)
 app.include_router(web.router)  # "/" (лендинг+форма), "/report", "/admin"
 

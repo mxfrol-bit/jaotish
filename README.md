@@ -37,6 +37,15 @@ supabase/schema.sql  таблицы me_profiles, me_feedback
 
 ## Локальный запуск
 
+Главная страница редактируется в `app/landing.html`, оформление и поведение —
+в `app/static/site.css` и `app/static/site.js`. Стили внутренних страниц находятся
+в `app/static/pages.css`. Сборка фронтенда не нужна. SVG-иллюстрация на главной
+декоративная, персональные расчёты по-прежнему выполняются на сервере.
+
+Проверка веб-формы без AI и внешней БД: `.venv/bin/python -m unittest discover -s tests -v`.
+Для локального визуального прогона отключите `TELEGRAM_BOT_TOKEN`, чтобы не запускать
+вторую копию polling-бота.
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
